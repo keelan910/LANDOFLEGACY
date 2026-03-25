@@ -48,17 +48,17 @@ const $=n=>"$"+Number(n||0).toLocaleString("en-US");
 const empty=()=>AGENTS.reduce((a,m)=>({...a,[m.id]:{ap:0,pol:0}}),{});
 function rangeDays(t){const n=new Date(),d=[];if(t==="week"){const dow=n.getDay();for(let i=dow;i>=0;i--){const x=new Date(n);x.setDate(n.getDate()-i);d.push(dayKey(x));}}else if(t==="month"){for(let i=1;i<=n.getDate();i++)d.push(dayKey(new Date(n.getFullYear(),n.getMonth(),i)));}else if(t==="year"){const y=n.getFullYear();for(let m=0;m<=n.getMonth();m++){const mx=m===n.getMonth()?n.getDate():new Date(y,m+1,0).getDate();for(let i=1;i<=mx;i++)d.push(dayKey(new Date(y,m,i)));}}return d;}
 
-// ═══ ROAST ENGINE ═══
+// ═══ ROAST ENGINE — BRUTAL MODE ═══
 function getRoast(dials,name){
   const h=new Date().getHours(),wp=Math.max(0,Math.min(h-8,9)),ep=wp>0?Math.round((DIAL_GOAL/9)*wp):0,pct=ep>0?(dials/ep)*100:dials>0?100:0;
-  if(h<8)return{msg:`Morning ${name}. Day hasn't started yet. No excuses when it does.`,c:"#4A5060",e:"🌅"};
-  if(dials>=DIAL_GOAL)return{msg:`${name} hit ${DIAL_GOAL} dials. That's what a CLOSER looks like. Everyone else take notes.`,c:"#4EBF8B",e:"👑"};
-  if(pct>=90)return{msg:`${name} is on pace. Keep that energy and finish strong.`,c:"#C9A84C",e:"💪"};
-  if(pct>=70)return{msg:`${name}, you're slipping. ${ep-dials} dials behind pace. Pick up the phone or pick up a new career.`,c:"#D4845B",e:"⚠️"};
-  if(pct>=50)return{msg:`${name}... ${dials} dials? My grandma could outpace you and she doesn't have a phone. ${ep-dials} behind. MOVE.`,c:"#D46B8C",e:"🗑️"};
-  if(pct>=25)return{msg:`${name}, this is embarrassing. ${dials} out of ${ep} expected. Are you working or warming a chair? The team is carrying your dead weight.`,c:"#D46B8C",e:"💀"};
-  if(dials>0)return{msg:`${name}. ${dials} dials. That's a coffee break, not a sales effort. My nephew could outwork you. Should be at ${ep}. GET ON THE PHONE.`,c:"#EF4444",e:"☠️"};
-  return{msg:`${name} has ZERO dials today. Not one call. What are you doing here? Start dialing or start packing. This isn't charity — it's Land of Legacy. Act like you belong.`,c:"#EF4444",e:"🚨"};
+  if(h<8)return{msg:`Morning ${name}. The day hasn't started yet — but when that clock hits 8 your ass better be dialing. Zero excuses.`,c:"#4A5060",e:"🌅"};
+  if(dials>=DIAL_GOAL)return{msg:`${name} just hit ${DIAL_GOAL} dials. Absolute damn beast. That's what a real closer looks like — the rest of you should be ashamed.`,c:"#4EBF8B",e:"👑"};
+  if(pct>=90)return{msg:`${name} is damn near on pace. Don't get comfortable — finish this shit strong and stop coasting.`,c:"#C9A84C",e:"💪"};
+  if(pct>=70)return{msg:`${name}, what the hell? ${ep-dials} dials behind pace. Are you dialing or scrolling your damn phone? Get your ass in gear NOW.`,c:"#D4845B",e:"⚠️"};
+  if(pct>=50)return{msg:`${name}... ${dials} dials? Are you kidding me? My dead grandma dials faster than your lazy ass. ${ep-dials} behind. Get the hell off your chair and DIAL.`,c:"#D46B8C",e:"🗑️"};
+  if(pct>=25)return{msg:`${name}, what the hell are you doing? ${dials} out of ${ep}?! This is pathetic. You're dead weight and the whole damn team knows it. Wake the hell up or get out.`,c:"#D46B8C",e:"💀"};
+  if(dials>0)return{msg:`${name}. ${dials} damn dials? That's not a sales effort, that's a joke. A toddler with a toy phone would outwork your sorry ass. Should be at ${ep}. PICK UP THE DAMN PHONE.`,c:"#EF4444",e:"☠️"};
+  return{msg:`${name} has ZERO dials. Not a single damn call. What the hell are you even doing here? You're wasting everyone's time including your own. Start dialing right now or pack your shit and leave. This is Land of Legacy — we don't carry dead weight.`,c:"#EF4444",e:"🚨"};
 }
 
 // ═══ KPI INPUT ═══
@@ -96,6 +96,7 @@ function App(){
   const[editing,setEditing]=useState(null);const[editVal,setEditVal]=useState("");
   const[anim,setAnim]=useState(false);const[toast,setToast]=useState(null);const[loading,setLoading]=useState(false);
   const[showAdd,setShowAdd]=useState(false);const[ltab,setLtab]=useState("feed");
+  const[leadLock,setLeadLock]=useState({dials:0,unlocked:false,maxLeads:0,grabbedToday:0,remaining:0,highIntentOnly:false,salesToday:0});
 
   const td=todayK();const isAdmin=role==="admin";const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
@@ -106,6 +107,7 @@ function App(){
     const[nl,ml,ls]=await Promise.all([get("a=leads-list&status=new"),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
     if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
+    if(me){const lk=await get(`a=leads-lock-check&agent=${me}`);if(lk)setLeadLock(lk);}
     setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
   },[me]);
 
@@ -126,7 +128,7 @@ function App(){
   const onKey=(e,mid,f)=>{if(e.key==="Enter"){e.target.blur();commitS(mid,f);}if(e.key==="Escape")setEditing(null);};
   const getAgg=useCallback(t=>{if(t==="day")return data||empty();const days=rangeDays(t);const agg=empty();const src={...allDays,[td]:data};for(const d of days){const dd=src[d];if(dd)for(const m of AGENTS){agg[m.id].ap+=(dd[m.id]?.ap||0);agg[m.id].pol+=(dd[m.id]?.pol||0);}}return agg;},[data,allDays]);
   const saveKpi=async(f,v)=>{const nk={...kpi,[f]:v};setKpi(nk);await post("kpi-save",{agent_id:me||"admin",date_key:td,...nk});showToast("KPI updated");};
-  const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin"});if(r.error){showToast(r.error);return;}showToast("Lead grabbed! 🔥");refresh();};
+  const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin"});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
   const handleLU=async(id,u)=>{await post("leads-update",{id,...u});refresh();};
   const handleAdd=async d=>{await post("leads-add",d);showToast("Lead added!");refresh();};
 
@@ -169,17 +171,54 @@ function App(){
     {/* ═══ LEADS PAGE ═══ */}
     {page==="leads"&&<div style={{flex:1,display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",gap:6,padding:"12px 16px 0"}}>{[{l:"New",v:lstats.new||0,c:"#C9A84C"},{l:"Grabbed",v:lstats.grabbed||0,c:"#5B8BD4"},{l:"Booked",v:lstats.booked||0,c:"#4EBF8B"},{l:"Closed",v:lstats.closed||0,c:"#2D8F65"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:12,padding:"10px 6px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:20,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+
+      {/* LEAD LOCK STATUS BANNER */}
+      {!isAdmin&&<div style={{margin:"10px 16px 0",background:leadLock.unlocked?"rgba(78,191,139,.06)":"rgba(239,68,68,.06)",border:`1px solid ${leadLock.unlocked?"rgba(78,191,139,.15)":"rgba(239,68,68,.15)"}`,borderRadius:14,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:20}}>{leadLock.unlocked?"🔓":"🔒"}</span>
+            <span style={{fontSize:14,fontWeight:800,color:leadLock.unlocked?"#4EBF8B":"#EF4444"}}>{leadLock.unlocked?"LEADS UNLOCKED":"LEADS LOCKED"}</span>
+          </div>
+          {leadLock.unlocked&&<span style={{fontSize:11,fontWeight:700,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.remaining} left</span>}
+        </div>
+        {!leadLock.unlocked&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,lineHeight:1.5}}>You need <span style={{fontWeight:900}}>500 dials</span> to unlock leads. You have <span style={{fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.dials}</span>. Get on the damn phone.</div>}
+        {leadLock.unlocked&&<div style={{fontSize:11,color:"#4A5060",lineHeight:1.5}}>
+          <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#C9A84C"}}>{leadLock.dials}</span> dials today · <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#5B8BD4"}}>{leadLock.grabbedToday}/{leadLock.maxLeads}</span> leads grabbed
+          {leadLock.highIntentOnly&&<span style={{color:"#4EBF8B",fontWeight:700}}> · HIGH INTENT ONLY (sale made)</span>}
+        </div>}
+        {!leadLock.unlocked&&<div style={{marginTop:8,height:6,background:"rgba(255,255,255,.03)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min((leadLock.dials/500)*100,100)}%`,background:"linear-gradient(90deg,#EF4444,#D4845B,#C9A84C)",borderRadius:4,transition:"width .5s"}}/></div>}
+        {!leadLock.unlocked&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace",marginTop:4,textAlign:"right"}}>{leadLock.dials}/500 dials</div>}
+      </div>}
+
       <div style={{display:"flex",gap:4,padding:"10px 16px 0"}}>{[{id:"feed",l:`Feed (${leads.length})`},{id:"mine",l:`Pipeline (${myLeads.length})`}].map(t=><button key={t.id} onClick={()=>setLtab(t.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:ltab===t.id?"rgba(201,168,76,.06)":"rgba(255,255,255,.015)",color:ltab===t.id?"#C9A84C":"#252830",fontSize:11,fontWeight:700,border:`1px solid ${ltab===t.id?"rgba(201,168,76,.1)":"rgba(255,255,255,.02)"}`}}>{t.l}</button>)}</div>
       {isAdmin&&<div style={{padding:"10px 16px 0"}}><button onClick={()=>setShowAdd(true)} style={{width:"100%",padding:"12px",borderRadius:12,background:"rgba(201,168,76,.05)",border:"1px dashed rgba(201,168,76,.15)",color:"#C9A84C",fontSize:13,fontWeight:700}}>+ Add Lead</button></div>}
       <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90,display:"flex",flexDirection:"column",gap:10}}>
-        {ltab==="feed"&&leads.map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
+        {ltab==="feed"&&leads.map((l,i)=>{
+          const canGrab=isAdmin||( leadLock.unlocked && leadLock.remaining > 0 && (!leadLock.highIntentOnly || l.intent==="high") );
+          return(<div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`,opacity:(!isAdmin&&!canGrab)?0.5:1}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
-          {l.post_text&&<div style={{fontSize:12,color:"#4A5060",lineHeight:1.5,marginBottom:10,padding:"8px 12px",background:"rgba(255,255,255,.015)",borderRadius:10,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{l.post_text.slice(0,140)}{l.post_text.length>140?"...":""}</div>}
-          <button onClick={()=>handleGrab(l.id)} style={{width:"100%",padding:"14px",borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800,letterSpacing:1,animation:"grabPulse 2s ease infinite"}}>⚡ GRAB THIS LEAD</button>
-        </div>)}
+          {/* CONTACT INFO CARD */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {l.phone&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></div>}
+            {l.email&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
+            {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
+            {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
+            {l.profile_url&&l.profile_url.startsWith("http")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(212,107,140,.06)",border:"1px solid rgba(212,107,140,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🔗</span><span style={{fontSize:11,color:"#D46B8C",fontFamily:"'IBM Plex Mono',monospace"}}>Profile</span></div>}
+            {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
+          </div>
+          {l.post_text&&<div style={{fontSize:12,color:"#4A5060",lineHeight:1.5,marginBottom:10,padding:"8px 12px",background:"rgba(255,255,255,.015)",borderRadius:10,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{l.post_text.slice(0,200)}{l.post_text.length>200?"...":""}</div>}
+          {canGrab?<button onClick={()=>handleGrab(l.id)} style={{width:"100%",padding:"14px",borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800,letterSpacing:1,animation:"grabPulse 2s ease infinite"}}>⚡ GRAB THIS LEAD</button>
+          :<div style={{width:"100%",padding:"14px",borderRadius:14,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.1)",color:"#EF4444",fontSize:13,fontWeight:700,textAlign:"center",letterSpacing:1}}>🔒 {!leadLock.unlocked?`${500-leadLock.dials} MORE DIALS TO UNLOCK`:leadLock.remaining<=0?"DAILY LIMIT REACHED":"HIGH INTENT ONLY"}</div>}
+        </div>)})}
         {ltab==="feed"&&!leads.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>No new leads right now</div>}
         {ltab==="mine"&&myLeads.map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{fontSize:15,fontWeight:700}}>{l.name}</div><span style={{fontSize:8,fontWeight:700,color:SC[l.status],background:`${SC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{SL[l.status]||l.status}</span></div>
+          {/* CONTACT INFO ON MY LEADS */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+            {l.phone&&<span style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6}}>📞 {l.phone}</span>}
+            {l.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {l.email}</span>}
+            {l.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {l.location}</span>}
+          </div>
           {l.notes&&<div style={{fontSize:11,color:"#3E4250",marginBottom:8}}>{l.notes}</div>}
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["contacted","booked","closed"].filter(s=>s!==l.status).map(s=><button key={s} onClick={()=>handleLU(l.id,{status:s})} style={{padding:"7px 12px",borderRadius:8,background:`${SC[s]}10`,border:`1px solid ${SC[s]}20`,color:SC[s],fontSize:10,fontWeight:700,textTransform:"capitalize"}}>{s}</button>)}</div>
         </div>)}
@@ -215,7 +254,7 @@ function App(){
   </div>);
 }
 
-function AddForm({onAdd,onClose}){const[n,setN]=useState("");const[s,setS]=useState("Facebook");const[p,setP]=useState("");const[i,setI]=useState("medium");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={s} onChange={e=>setS(e.target.value)} placeholder="Source" style={{...B.modalIn,marginTop:8}}/><textarea value={p} onChange={e=>setP(e.target.value)} placeholder="What they posted..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><div style={{display:"flex",gap:8,marginTop:8}}>{["high","medium","low"].map(x=><button key={x} onClick={()=>setI(x)} style={{flex:1,padding:10,borderRadius:10,background:i===x?`${IC[x]}15`:"rgba(255,255,255,.02)",border:`1px solid ${i===x?IC[x]+"30":"rgba(255,255,255,.04)"}`,color:i===x?IC[x]:"#3E4250",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{x}</button>)}</div><button onClick={()=>{if(n.trim()){onAdd({name:n,source:s,post_text:p,intent:i});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button></div>);}
+function AddForm({onAdd,onClose}){const[n,setN]=useState("");const[s,setS]=useState("Facebook");const[p,setP]=useState("");const[i,setI]=useState("high");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[co,setCo]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,marginTop:8}}/><input value={s} onChange={e=>setS(e.target.value)} placeholder="Source" style={{...B.modalIn,marginTop:8}}/><textarea value={p} onChange={e=>setP(e.target.value)} placeholder="What they posted / context..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><div style={{display:"flex",gap:8,marginTop:8}}>{["high","medium","low"].map(x=><button key={x} onClick={()=>setI(x)} style={{flex:1,padding:10,borderRadius:10,background:i===x?`${IC[x]}15`:"rgba(255,255,255,.02)",border:`1px solid ${i===x?IC[x]+"30":"rgba(255,255,255,.04)"}`,color:i===x?IC[x]:"#3E4250",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{x}</button>)}</div><button onClick={()=>{if(n.trim()){onAdd({name:n,source:s,post_text:p,intent:i,phone:ph,email:em,location:loc,company:co});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button></div>);}
 
 const B={card:{background:"rgba(10,11,16,.75)",borderRadius:18,padding:16,border:"1px solid rgba(255,255,255,.04)"},row:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,11,16,.7)",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(255,255,255,.03)",marginBottom:8},numBtn:{background:"rgba(255,255,255,.015)",border:"1px solid rgba(255,255,255,.04)",borderRadius:14,padding:"13px 16px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,width:"100%",maxWidth:160,textAlign:"center"},numIn:{background:"rgba(201,168,76,.06)",border:"2px solid rgba(201,168,76,.25)",borderRadius:14,padding:"13px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,color:"#C9A84C",width:"100%",maxWidth:160,textAlign:"center",WebkitAppearance:"none"},modalIn:{width:"100%",padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",color:"#E2E4EA",fontSize:14,fontFamily:"'Outfit',sans-serif"}};
 

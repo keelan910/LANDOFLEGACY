@@ -107,9 +107,9 @@ function App(){
     const[nl,ml,ls]=await Promise.all([get("a=leads-list&status=new"),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
     if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
-    if(me){const lk=await get(`a=leads-lock-check&agent=${me}`);if(lk)setLeadLock(lk);}
+    if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}
     setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
-  },[me]);
+  },[me,td]);
 
   const onLogin=useCallback(async(r,aid)=>{
     setRole(r);setMe(aid);setLoading(true);
@@ -127,8 +127,8 @@ function App(){
   const commitS=(mid,f)=>{const v=parseFloat(editVal)||0;saveSales({...data,[mid]:{...data[mid],[f]:v}});setEditing(null);showToast(`${AGENTS.find(a=>a.id===mid)?.name} updated`);};
   const onKey=(e,mid,f)=>{if(e.key==="Enter"){e.target.blur();commitS(mid,f);}if(e.key==="Escape")setEditing(null);};
   const getAgg=useCallback(t=>{if(t==="day")return data||empty();const days=rangeDays(t);const agg=empty();const src={...allDays,[td]:data};for(const d of days){const dd=src[d];if(dd)for(const m of AGENTS){agg[m.id].ap+=(dd[m.id]?.ap||0);agg[m.id].pol+=(dd[m.id]?.pol||0);}}return agg;},[data,allDays]);
-  const saveKpi=async(f,v)=>{const nk={...kpi,[f]:v};setKpi(nk);await post("kpi-save",{agent_id:me||"admin",date_key:td,...nk});showToast("KPI updated");};
-  const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin"});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
+  const saveKpi=async(f,v)=>{const nk={...kpi,[f]:v};setKpi(nk);await post("kpi-save",{agent_id:me||"admin",date_key:td,...nk});showToast("KPI updated");if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}};
+  const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin",date:td});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
   const handleLU=async(id,u)=>{await post("leads-update",{id,...u});refresh();};
   const handleAdd=async d=>{await post("leads-add",d);showToast("Lead added!");refresh();};
 
@@ -181,13 +181,13 @@ function App(){
           </div>
           {leadLock.unlocked&&<span style={{fontSize:11,fontWeight:700,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.remaining} left</span>}
         </div>
-        {!leadLock.unlocked&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,lineHeight:1.5}}>You need <span style={{fontWeight:900}}>500 dials</span> to unlock leads. You have <span style={{fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.dials}</span>. Get on the damn phone.</div>}
+        {!leadLock.unlocked&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,lineHeight:1.5}}>You need <span style={{fontWeight:900}}>{DIAL_GOAL} dials</span> to unlock leads. You have <span style={{fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.dials}</span>. Get on the damn phone.</div>}
         {leadLock.unlocked&&<div style={{fontSize:11,color:"#4A5060",lineHeight:1.5}}>
           <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#C9A84C"}}>{leadLock.dials}</span> dials today · <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#5B8BD4"}}>{leadLock.grabbedToday}/{leadLock.maxLeads}</span> leads grabbed
           {leadLock.highIntentOnly&&<span style={{color:"#4EBF8B",fontWeight:700}}> · HIGH INTENT ONLY (sale made)</span>}
         </div>}
-        {!leadLock.unlocked&&<div style={{marginTop:8,height:6,background:"rgba(255,255,255,.03)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min((leadLock.dials/500)*100,100)}%`,background:"linear-gradient(90deg,#EF4444,#D4845B,#C9A84C)",borderRadius:4,transition:"width .5s"}}/></div>}
-        {!leadLock.unlocked&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace",marginTop:4,textAlign:"right"}}>{leadLock.dials}/500 dials</div>}
+        {!leadLock.unlocked&&<div style={{marginTop:8,height:6,background:"rgba(255,255,255,.03)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min((leadLock.dials/DIAL_GOAL)*100,100)}%`,background:"linear-gradient(90deg,#EF4444,#D4845B,#C9A84C)",borderRadius:4,transition:"width .5s"}}/></div>}
+        {!leadLock.unlocked&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace",marginTop:4,textAlign:"right"}}>{leadLock.dials}/{DIAL_GOAL} dials</div>}
       </div>}
 
       <div style={{display:"flex",gap:4,padding:"10px 16px 0"}}>{[{id:"feed",l:`Feed (${leads.length})`},{id:"mine",l:`Pipeline (${myLeads.length})`}].map(t=><button key={t.id} onClick={()=>setLtab(t.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:ltab===t.id?"rgba(201,168,76,.06)":"rgba(255,255,255,.015)",color:ltab===t.id?"#C9A84C":"#252830",fontSize:11,fontWeight:700,border:`1px solid ${ltab===t.id?"rgba(201,168,76,.1)":"rgba(255,255,255,.02)"}`}}>{t.l}</button>)}</div>
@@ -208,7 +208,7 @@ function App(){
           </div>
           {l.post_text&&<div style={{fontSize:12,color:"#4A5060",lineHeight:1.5,marginBottom:10,padding:"8px 12px",background:"rgba(255,255,255,.015)",borderRadius:10,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{l.post_text.slice(0,200)}{l.post_text.length>200?"...":""}</div>}
           {canGrab?<button onClick={()=>handleGrab(l.id)} style={{width:"100%",padding:"14px",borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800,letterSpacing:1,animation:"grabPulse 2s ease infinite"}}>⚡ GRAB THIS LEAD</button>
-          :<div style={{width:"100%",padding:"14px",borderRadius:14,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.1)",color:"#EF4444",fontSize:13,fontWeight:700,textAlign:"center",letterSpacing:1}}>🔒 {!leadLock.unlocked?`${500-leadLock.dials} MORE DIALS TO UNLOCK`:leadLock.remaining<=0?"DAILY LIMIT REACHED":"HIGH INTENT ONLY"}</div>}
+          :<div style={{width:"100%",padding:"14px",borderRadius:14,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.1)",color:"#EF4444",fontSize:13,fontWeight:700,textAlign:"center",letterSpacing:1}}>🔒 {!leadLock.unlocked?`${DIAL_GOAL-leadLock.dials} MORE DIALS TO UNLOCK`:leadLock.remaining<=0?"DAILY LIMIT REACHED":"HIGH INTENT ONLY"}</div>}
         </div>)})}
         {ltab==="feed"&&!leads.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>No new leads right now</div>}
         {ltab==="mine"&&myLeads.map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>

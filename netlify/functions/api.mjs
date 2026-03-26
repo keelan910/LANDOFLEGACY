@@ -29,7 +29,7 @@ export default async (req) => {
     // ── LEAD LOCK CHECK ── returns how many leads an agent can grab today
     if (a === "leads-lock-check") {
       const agent = url.searchParams.get("agent");
-      const today = new Date().toISOString().slice(0, 10);
+      const today = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
 
       // Get agent's dials for today
       const kpiRows = await sql`SELECT dials FROM kpis WHERE agent_id = ${agent} AND date_key = ${today}`;
@@ -48,7 +48,7 @@ export default async (req) => {
       let highIntentOnly = false;
       let unlocked = false;
 
-      if (dials >= 500) {
+      if (dials >= 600) {
         unlocked = true;
         if (salesToday > 0) {
           // Made a sale: only 5 high intent leads
@@ -92,7 +92,7 @@ export default async (req) => {
 
       if (a === "leads-grab") {
         const agent = body.agent || "admin";
-        const today = new Date().toISOString().slice(0, 10);
+        const today = body.date || new Date().toISOString().slice(0, 10);
 
         // Admin bypass - no lock
         if (agent !== "admin") {
@@ -100,8 +100,8 @@ export default async (req) => {
           const kpiRows = await sql`SELECT dials FROM kpis WHERE agent_id = ${agent} AND date_key = ${today}`;
           const dials = kpiRows.length > 0 ? (kpiRows[0].dials || 0) : 0;
 
-          if (dials < 500) {
-            return new Response(JSON.stringify({ error: `Locked! You need 500 dials to unlock leads. You have ${dials}. Get on the phone!` }), { status: 403, headers: H });
+          if (dials < 600) {
+            return new Response(JSON.stringify({ error: `Locked! You need 600 dials to unlock leads. You have ${dials}. Get on the phone!` }), { status: 403, headers: H });
           }
 
           // Count grabbed today

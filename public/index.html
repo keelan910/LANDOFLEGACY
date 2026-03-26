@@ -224,13 +224,13 @@ function App(){
         {ltab==="feed"&&leads.map((l,i)=>{
           const canGrab=isAdmin||( leadLock.unlocked && leadLock.remaining > 0 && (!leadLock.highIntentOnly || l.intent==="high") );
           return(<div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`,opacity:(!isAdmin&&!canGrab)?0.5:1}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><a href={`tel:${l.name||""}`} style={{fontSize:15,fontWeight:700,color:"#E2E4EA",textDecoration:"none",cursor:"pointer"}}>{l.name||"Unknown"}</a><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
           {/* CONTACT INFO CARD — hidden when leads are locked for non-admin */}
           {(isAdmin||leadLock.unlocked)?<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
             {l.phone&&!l.phone.startsWith("🔒")&&<a href={`tel:${l.phone}`} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px",textDecoration:"none"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></a>}
             {l.email&&!l.email.startsWith("🔒")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
-            {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
-            {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
+            {l.location&&<a href={`tel:${l.location}`} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></a>}
+            {l.company&&<a href={`tel:${l.company}`} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></a>}
             {l.profile_url&&l.profile_url.startsWith("http")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(212,107,140,.06)",border:"1px solid rgba(212,107,140,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🔗</span><span style={{fontSize:11,color:"#D46B8C",fontFamily:"'IBM Plex Mono',monospace"}}>Profile</span></div>}
             {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
           </div>
@@ -241,12 +241,12 @@ function App(){
         </div>)})}
         {ltab==="feed"&&!leads.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>No new leads right now</div>}
         {ltab==="mine"&&myLeads.map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{fontSize:15,fontWeight:700}}>{l.name}</div><span style={{fontSize:8,fontWeight:700,color:SC[l.status],background:`${SC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{SL[l.status]||l.status}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><a href={`tel:${l.name||""}`} style={{fontSize:15,fontWeight:700,color:"#E2E4EA",textDecoration:"none",cursor:"pointer"}}>{l.name}</a><span style={{fontSize:8,fontWeight:700,color:SC[l.status],background:`${SC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{SL[l.status]||l.status}</span></div>
           {/* CONTACT INFO ON MY LEADS */}
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
             {l.phone&&<a href={`tel:${l.phone}`} style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>📞 {l.phone}</a>}
             {l.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {l.email}</span>}
-            {l.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {l.location}</span>}
+            {l.location&&<a href={`tel:${l.location}`} style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer"}}>📍 {l.location}</a>}
           </div>
           {l.notes&&<div style={{fontSize:11,color:"#3E4250",marginBottom:8}}>{l.notes}</div>}
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["contacted","booked","closed"].filter(s=>s!==l.status).map(s=><button key={s} onClick={()=>handleLU(l.id,{status:s})} style={{padding:"7px 12px",borderRadius:8,background:`${SC[s]}10`,border:`1px solid ${SC[s]}20`,color:SC[s],fontSize:10,fontWeight:700,textTransform:"capitalize"}}>{s}</button>)}</div>
@@ -286,13 +286,13 @@ function App(){
       <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90,display:"flex",flexDirection:"column",gap:10}}>
         {recruits.filter(r=>r.stage!=="dropped").map((r,i)=><div key={r.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-            <div><div style={{fontSize:15,fontWeight:700}}>{r.name||"Unknown"}</div>{r.source&&<div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{r.source}</div>}</div>
+            <div><a href={`tel:${r.name||""}`} style={{fontSize:15,fontWeight:700,color:"#E2E4EA",textDecoration:"none",cursor:"pointer"}}>{r.name||"Unknown"}</a>{r.source&&<div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{r.source}</div>}</div>
             <span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:RC[r.stage]||"#C9A84C",background:`${RC[r.stage]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{RL[r.stage]||r.stage}</span>
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
             {r.phone&&<a href={`tel:${r.phone}`} style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>📞 {r.phone}</a>}
             {r.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {r.email}</span>}
-            {r.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {r.location}</span>}
+            {r.location&&<a href={`tel:${r.location}`} style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer"}}>📍 {r.location}</a>}
             {!r.phone&&!r.email&&!r.location&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
           </div>
           {r.notes&&<div style={{fontSize:11,color:"#3E4250",marginBottom:8,padding:"6px 10px",background:"rgba(255,255,255,.015)",borderRadius:8,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{r.notes}</div>}
@@ -305,7 +305,7 @@ function App(){
           <div style={{fontSize:12,fontWeight:700,color:"#252830",marginTop:8}}>Dropped ({recruits.filter(r=>r.stage==="dropped").length})</div>
           {recruits.filter(r=>r.stage==="dropped").map((r,i)=><div key={r.id} style={{...B.card,opacity:0.5}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:14,fontWeight:600}}>{r.name||"Unknown"}</div>
+              <a href={`tel:${r.name||""}`} style={{fontSize:14,fontWeight:600,color:"#E2E4EA",textDecoration:"none",cursor:"pointer"}}>{r.name||"Unknown"}</a>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>handleRecruitUpdate(r.id,{stage:"prospect"})} style={{padding:"5px 10px",borderRadius:6,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",color:"#C9A84C",fontSize:9,fontWeight:700}}>Restore</button>
                 <button onClick={()=>handleRecruitDelete(r.id)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",color:"#EF4444",fontSize:9,fontWeight:700}}>Delete</button>
@@ -340,7 +340,7 @@ function App(){
           <div style={{paddingLeft:6}}>
             {/* HEADER */}
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-              <div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div>{l.source&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source}</div>}</div>
+              <div><a href={`tel:${l.name||""}`} style={{fontSize:15,fontWeight:700,color:"#E2E4EA",textDecoration:"none",cursor:"pointer"}}>{l.name||"Unknown"}</a>{l.source&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source}</div>}</div>
               <span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:CC[l.status],background:`${CC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{CL[l.status]||l.status}</span>
             </div>
 
@@ -348,8 +348,8 @@ function App(){
             <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
               {l.phone&&<a href={`tel:${l.phone}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.08)",border:"1px solid rgba(91,139,212,.15)",borderRadius:8,padding:"6px 12px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:14}}>📞</span><span style={{fontSize:12,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",fontWeight:600}}>{l.phone}</span></a>}
               {l.email&&<a href={`mailto:${l.email}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"6px 12px",textDecoration:"none"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></a>}
-              {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"6px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
-              {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"6px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
+              {l.location&&<a href={`tel:${l.location}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"6px 10px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></a>}
+              {l.company&&<a href={`tel:${l.company}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"6px 10px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></a>}
               {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
             </div>
 

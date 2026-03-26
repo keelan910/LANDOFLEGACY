@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Land of Legacy"/>
+<meta name="theme-color" content="#050507"/>
+<title>Land of Legacy</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23050507' width='100' height='100' rx='22'/><text x='50' y='65' text-anchor='middle' font-size='50' fill='%23C9A84C'>◈</text></svg>"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}html{-webkit-text-size-adjust:100%;touch-action:manipulation}body{overscroll-behavior:none;background:#050507;font-family:'Outfit',sans-serif;-webkit-font-smoothing:antialiased;min-height:100dvh;color:#E2E4EA}input:focus,textarea:focus{outline:none}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}input[type=number]{-moz-appearance:textfield}button{-webkit-tap-highlight-color:transparent;border:none;cursor:pointer;font-family:inherit}::-webkit-scrollbar{display:none}#root{min-height:100dvh}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}@keyframes barIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}@keyframes toastIn{from{opacity:0;transform:translateY(30px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes glow{0%,100%{text-shadow:0 0 20px rgba(201,168,76,.2)}50%{text-shadow:0 0 40px rgba(201,168,76,.5)}}@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}@keyframes breathe{0%,100%{opacity:.35;transform:scale(.95)}50%{opacity:1;transform:scale(1)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}@keyframes grabPulse{0%{box-shadow:0 0 0 0 rgba(201,168,76,.4)}70%{box-shadow:0 0 0 12px rgba(201,168,76,0)}100%{box-shadow:0 0 0 0 rgba(201,168,76,0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useCallback}=React;
+
+// ═══ TEAM — AP REMOVED ═══
+const AGENTS=[
+  {id:"ryan",name:"Ryan",goal:0,color:"#5B8BD4",pin:"1001"},
+  {id:"john",name:"John",goal:0,color:"#4EBF8B",pin:"1002"},
+  {id:"matt",name:"Matthew",goal:0,color:"#9B7ED8",pin:"1003"},
+  {id:"chris",name:"Christian",goal:0,color:"#D46B8C",pin:"1004"},
+  {id:"keel",name:"Keelan",goal:0,color:"#D4845B",pin:"1005"},
+  {id:"kent",name:"Kente",goal:0,color:"#4EB8B5",pin:"1006"},
+];
+const ADMIN_PIN="9999";
+const RATE=0.25;
+const DIAL_GOAL=600;
+const API="/.netlify/functions/api";
+const IC={high:"#4EBF8B",medium:"#C9A84C",low:"#5B8BD4"};
+const SC={new:"#C9A84C",grabbed:"#5B8BD4",contacted:"#9B7ED8",booked:"#4EBF8B",closed:"#2D8F65"};
+const SL={new:"New",grabbed:"Grabbed",contacted:"Contacted",booked:"Booked",closed:"Closed"};
+
+const get=async p=>{try{const r=await fetch(`${API}?${p}`);return(await r.json()).data||null;}catch{return null;}};
+const post=async(a,b)=>{try{const r=await fetch(`${API}?a=${a}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});return await r.json();}catch(e){return{error:e.message};}};
+const dayKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const todayK=()=>dayKey(new Date());
+const $=n=>"$"+Number(n||0).toLocaleString("en-US");
+const empty=()=>AGENTS.reduce((a,m)=>({...a,[m.id]:{ap:0,pol:0}}),{});
+function rangeDays(t){const n=new Date(),d=[];if(t==="week"){const dow=n.getDay();for(let i=dow;i>=0;i--){const x=new Date(n);x.setDate(n.getDate()-i);d.push(dayKey(x));}}else if(t==="month"){for(let i=1;i<=n.getDate();i++)d.push(dayKey(new Date(n.getFullYear(),n.getMonth(),i)));}else if(t==="year"){const y=n.getFullYear();for(let m=0;m<=n.getMonth();m++){const mx=m===n.getMonth()?n.getDate():new Date(y,m+1,0).getDate();for(let i=1;i<=mx;i++)d.push(dayKey(new Date(y,m,i)));}}return d;}
+
+// ═══ ROAST ENGINE — BRUTAL MODE ═══
+function getRoast(dials,name){
+  const h=new Date().getHours(),wp=Math.max(0,Math.min(h-8,9)),ep=wp>0?Math.round((DIAL_GOAL/9)*wp):0,pct=ep>0?(dials/ep)*100:dials>0?100:0;
+  if(h<8)return{msg:`Morning ${name}. The day hasn't started yet — but when that clock hits 8 your ass better be dialing. Zero excuses.`,c:"#4A5060",e:"🌅"};
+  if(dials>=DIAL_GOAL)return{msg:`${name} just hit ${DIAL_GOAL} dials. Absolute damn beast. That's what a real closer looks like — the rest of you should be ashamed.`,c:"#4EBF8B",e:"👑"};
+  if(pct>=90)return{msg:`${name} is damn near on pace. Don't get comfortable — finish this shit strong and stop coasting.`,c:"#C9A84C",e:"💪"};
+  if(pct>=70)return{msg:`${name}, what the hell? ${ep-dials} dials behind pace. Are you dialing or scrolling your damn phone? Get your ass in gear NOW.`,c:"#D4845B",e:"⚠️"};
+  if(pct>=50)return{msg:`${name}... ${dials} dials? Are you kidding me? My dead grandma dials faster than your lazy ass. ${ep-dials} behind. Get the hell off your chair and DIAL.`,c:"#D46B8C",e:"🗑️"};
+  if(pct>=25)return{msg:`${name}, what the hell are you doing? ${dials} out of ${ep}?! This is pathetic. You're dead weight and the whole damn team knows it. Wake the hell up or get out.`,c:"#D46B8C",e:"💀"};
+  if(dials>0)return{msg:`${name}. ${dials} damn dials? That's not a sales effort, that's a joke. A toddler with a toy phone would outwork your sorry ass. Should be at ${ep}. PICK UP THE DAMN PHONE.`,c:"#EF4444",e:"☠️"};
+  return{msg:`${name} has ZERO dials. Not a single damn call. What the hell are you even doing here? You're wasting everyone's time including your own. Start dialing right now or pack your shit and leave. This is Land of Legacy — we don't carry dead weight.`,c:"#EF4444",e:"🚨"};
+}
+
+// ═══ KPI INPUT ═══
+function KF({label,value,onChange}){
+  const[ed,setEd]=useState(false);const[v,setV]=useState("");
+  return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+    <div style={{fontSize:7,fontWeight:700,letterSpacing:1.2,color:"#252830",fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{label}</div>
+    {ed?<input autoFocus type="number" inputMode="numeric" value={v} onChange={e=>setV(e.target.value)} onBlur={()=>{onChange(parseInt(v)||0);setEd(false);}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}} style={B.numIn}/>
+    :<button onClick={()=>{setV(String(value));setEd(true);}} style={{...B.numBtn,color:value>0?"#E2E4EA":"#1A1C24",fontSize:20,padding:"10px 14px"}}>{value}</button>}
+  </div>);
+}
+
+// ═══ SCREENS ═══
+function Loading(){return(<div style={{minHeight:"100dvh",background:"#050507",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24}}><div style={{position:"relative",width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{position:"absolute",inset:0,border:"2px solid rgba(201,168,76,.08)",borderTopColor:"rgba(201,168,76,.5)",borderRadius:"50%",animation:"spin 1.2s linear infinite"}}/><span style={{fontSize:32,color:"#C9A84C",animation:"breathe 2.5s ease infinite"}}>◈</span></div><div style={{fontSize:18,fontWeight:900,letterSpacing:6,color:"#C9A84C"}}>LAND OF LEGACY</div><div style={{width:140,height:2,background:"rgba(255,255,255,.04)",overflow:"hidden",borderRadius:2}}><div style={{width:"100%",height:"100%",background:"linear-gradient(90deg,transparent,#C9A84C,transparent)",backgroundSize:"200% 100%",animation:"shimmer 1.5s ease infinite"}}/></div></div>);}
+
+function Lock({onLogin}){
+  const[pin,setPin]=useState("");const[err,setErr]=useState(false);const[pr,setPr]=useState(null);
+  const go=p=>{const v=p||pin;if(v===ADMIN_PIN){onLogin("admin",null);return;}const ag=AGENTS.find(a=>a.pin===v);if(ag){onLogin("agent",ag.id);return;}setErr(true);setPin("");};
+  const tap=n=>{setPr(n);setErr(false);setTimeout(()=>setPr(null),100);const nx=pin+n;setPin(nx);if(nx.length===4)setTimeout(()=>go(nx),120);};
+  return(<div style={{minHeight:"100dvh",background:"#050507",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:"-30%",left:"50%",transform:"translateX(-50%)",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,168,76,.06) 0%,transparent 70%)"}}/>
+    <div style={{textAlign:"center",marginBottom:40}}><div style={{fontSize:52,color:"#C9A84C",animation:"glow 3s ease infinite",marginBottom:10}}>◈</div><h1 style={{fontSize:20,fontWeight:900,letterSpacing:8,color:"#C9A84C"}}>LAND OF LEGACY</h1><div style={{fontSize:8,letterSpacing:4,color:"#2D3040",fontWeight:700,marginTop:6,fontFamily:"'IBM Plex Mono',monospace"}}>TEAM PERFORMANCE SUITE</div></div>
+    <div style={{display:"flex",gap:18,marginBottom:10,height:32,alignItems:"center"}}>{[0,1,2,3].map(i=>(<div key={i} style={{width:16,height:16,borderRadius:"50%",border:"1.5px solid rgba(201,168,76,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:i<pin.length?"#C9A84C":"transparent",boxShadow:i<pin.length?"0 0 12px rgba(201,168,76,.5)":"none",transform:i<pin.length?"scale(1)":"scale(0)",transition:"all .15s"}}/></div>))}</div>
+    {err?<div style={{fontSize:13,color:"#D46B6B",fontWeight:600,height:20,marginBottom:6,animation:"shake .4s ease"}}>Invalid code</div>:<div style={{fontSize:13,color:"#252830",fontWeight:500,height:20,marginBottom:6}}>Enter your 4-digit PIN</div>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,width:"100%",maxWidth:270}}>{[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((n,i)=>(n===""?<div key={i}/>:<button key={i} onClick={()=>n==="⌫"?(()=>{setPin(pin.slice(0,-1));setErr(false);})():tap(String(n))} style={{width:"100%",aspectRatio:"1.35",borderRadius:16,background:pr===String(n)?"rgba(201,168,76,.1)":"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#E2E4EA",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .12s"}}><span style={n==="⌫"?{fontSize:18,color:"#4A5060"}:{fontSize:24}}>{n}</span></button>))}</div>
+  </div>);
+}
+
+// ═══ MAIN APP ═══
+function App(){
+  const[role,setRole]=useState(null);const[me,setMe]=useState(null);const[page,setPage]=useState("kpi");
+  const[leads,setLeads]=useState([]);const[myLeads,setMyLeads]=useState([]);const[lstats,setLstats]=useState({});
+  const[data,setData]=useState(null);const[allDays,setAllDays]=useState({});const[period,setPeriod]=useState("day");
+  const[kpi,setKpi]=useState({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});const[teamKpi,setTeamKpi]=useState([]);
+  const[editing,setEditing]=useState(null);const[editVal,setEditVal]=useState("");
+  const[anim,setAnim]=useState(false);const[toast,setToast]=useState(null);const[loading,setLoading]=useState(false);
+  const[showAdd,setShowAdd]=useState(false);const[ltab,setLtab]=useState("feed");
+  const[leadLock,setLeadLock]=useState({dials:0,unlocked:false,maxLeads:0,grabbedToday:0,remaining:0,highIntentOnly:false,salesToday:0});
+
+  const td=todayK();const isAdmin=role==="admin";const myAgent=AGENTS.find(a=>a.id===me);
+  const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
+
+  useEffect(()=>{fetch(`${API}?a=init`).catch(()=>{});},[]);
+
+  const refresh=useCallback(async()=>{
+    const[nl,ml,ls]=await Promise.all([get("a=leads-list&status=new"),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
+    setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
+    if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
+    if(me){const lk=await get(`a=leads-lock-check&agent=${me}`);if(lk)setLeadLock(lk);}
+    setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
+  },[me]);
+
+  const onLogin=useCallback(async(r,aid)=>{
+    setRole(r);setMe(aid);setLoading(true);
+    const t=await post("sales-get",{date:td});setData(t.data?{...empty(),...t.data}:empty());
+    const all=await post("sales-all",{});setAllDays(all.data||{});
+    setLoading(false);setTimeout(()=>setAnim(true),60);
+  },[]);
+
+  useEffect(()=>{if(role)refresh();},[role,refresh]);
+  useEffect(()=>{if(!role)return;const iv=setInterval(refresh,8000);return()=>clearInterval(iv);},[role,refresh]);
+  useEffect(()=>{if(!role||loading)return;const iv=setInterval(async()=>{const d=await post("sales-get",{date:td});if(d.data)setData(p=>({...empty(),...d.data}));},10000);return()=>clearInterval(iv);},[role,loading]);
+
+  const saveSales=async nd=>{setData(nd);await post("sales-save",{date:td,data:nd});};
+  const startEdit=(mid,f)=>{setEditing(`${mid}-${f}`);setEditVal("");};
+  const commitS=(mid,f)=>{const v=parseFloat(editVal)||0;saveSales({...data,[mid]:{...data[mid],[f]:v}});setEditing(null);showToast(`${AGENTS.find(a=>a.id===mid)?.name} updated`);};
+  const onKey=(e,mid,f)=>{if(e.key==="Enter"){e.target.blur();commitS(mid,f);}if(e.key==="Escape")setEditing(null);};
+  const getAgg=useCallback(t=>{if(t==="day")return data||empty();const days=rangeDays(t);const agg=empty();const src={...allDays,[td]:data};for(const d of days){const dd=src[d];if(dd)for(const m of AGENTS){agg[m.id].ap+=(dd[m.id]?.ap||0);agg[m.id].pol+=(dd[m.id]?.pol||0);}}return agg;},[data,allDays]);
+  const saveKpi=async(f,v)=>{const nk={...kpi,[f]:v};setKpi(nk);await post("kpi-save",{agent_id:me||"admin",date_key:td,...nk});showToast("KPI updated");};
+  const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin"});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
+  const handleLU=async(id,u)=>{await post("leads-update",{id,...u});refresh();};
+  const handleAdd=async d=>{await post("leads-add",d);showToast("Lead added!");refresh();};
+
+  if(!role)return<Lock onLogin={onLogin}/>;
+  if(loading||!data)return<Loading/>;
+
+  const agg=getAgg(period);const totAP=Object.values(agg).reduce((s,v)=>s+(v.ap||0),0);const totPol=Object.values(agg).reduce((s,v)=>s+(v.pol||0),0);const totComm=totAP*RATE;const maxAP=Math.max(...AGENTS.map(m=>agg[m.id]?.ap||0),1);
+  const pLabel={day:"Today",week:"This Week",month:"This Month",year:"This Year"}[period];
+  const dialPct=Math.min((kpi.dials/DIAL_GOAL)*100,100);const myRoast=myAgent?getRoast(kpi.dials,myAgent.name):null;
+
+  return(<div style={{minHeight:"100dvh",background:"#050507",fontFamily:"'Outfit',sans-serif",color:"#E2E4EA",display:"flex",flexDirection:"column"}}>
+    {/* HEADER */}
+    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"#2D3040",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><button onClick={()=>{setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});}} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#2D3040",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div>
+
+    {/* ═══ KPI PAGE ═══ */}
+    {page==="kpi"&&<div style={{flex:1,padding:"12px 16px",overflowY:"auto",paddingBottom:90}}>
+      {!isAdmin&&myAgent&&<>
+        <div style={{...B.card,animation:anim?"fadeIn .4s ease both":"none",textAlign:"center",padding:"24px 18px"}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#4A5060",marginBottom:16}}>Daily Dial Goal — {DIAL_GOAL}</div>
+          <div style={{position:"relative",width:140,height:140,margin:"0 auto 16px"}}><svg width="140" height="140" viewBox="0 0 140 140" style={{transform:"rotate(-90deg)"}}><circle cx="70" cy="70" r="60" fill="none" stroke="rgba(255,255,255,.03)" strokeWidth="8"/><circle cx="70" cy="70" r="60" fill="none" stroke={dialPct>=100?"#4EBF8B":dialPct>=70?"#C9A84C":dialPct>=40?"#D4845B":"#EF4444"} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${dialPct*3.77} 377`} style={{transition:"stroke-dasharray .5s"}}/></svg><div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:36,fontWeight:900,color:dialPct>=100?"#4EBF8B":"#E2E4EA",fontFamily:"'IBM Plex Mono',monospace"}}>{kpi.dials}</div><div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>/ {DIAL_GOAL}</div></div></div>
+          {myRoast&&<div style={{background:`${myRoast.c}10`,border:`1px solid ${myRoast.c}25`,borderRadius:14,padding:"14px 16px",marginBottom:16,textAlign:"left"}}><div style={{fontSize:13,color:myRoast.c,fontWeight:600,lineHeight:1.5}}><span style={{fontSize:18,marginRight:6}}>{myRoast.e}</span>{myRoast.msg}</div></div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[{k:"dials",l:"Dials"},{k:"contacts",l:"Contacts"},{k:"appointments",l:"Appts Set"},{k:"quotes",l:"Quotes"},{k:"apps_submitted",l:"Apps Sent"}].map(f=><div key={f.k} style={{background:"rgba(255,255,255,.015)",borderRadius:12,padding:"12px 8px",border:"1px solid rgba(255,255,255,.03)"}}><KF label={f.l} value={kpi[f.k]} onChange={v=>saveKpi(f.k,v)}/></div>)}</div>
+        </div>
+        <div style={{fontSize:14,fontWeight:700,color:"#4A5060",marginTop:16,marginBottom:10}}>Team Dial Leaderboard</div>
+        {[...teamKpi].sort((a,b)=>(b.dials||0)-(a.dials||0)).map((tk,i)=>{const ag=AGENTS.find(a=>a.id===tk.agent_id);if(!ag)return null;const pct=Math.min((tk.dials/DIAL_GOAL)*100,100);const isMe=tk.agent_id===me;return(
+          <div key={tk.agent_id} style={{...B.row,...(isMe?{background:"rgba(201,168,76,.04)",border:"1px solid rgba(201,168,76,.1)"}:{}),animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.2+i*.04}s`}}><div style={{display:"flex",alignItems:"center",gap:10,flex:1}}><span style={{fontSize:i<3?20:14,minWidth:28,textAlign:"center"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span><div><div style={{fontSize:14,fontWeight:700,color:isMe?ag.color:"#E2E4EA"}}>{ag.name}{isMe?" (You)":""}</div><div style={{fontSize:10,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{tk.contacts||0} contacts · {tk.appointments||0} appts</div></div></div><div style={{fontSize:18,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace",color:pct>=100?"#4EBF8B":pct>=70?"#C9A84C":"#EF4444"}}>{tk.dials||0}</div></div>);})}
+      </>}
+      {isAdmin&&<>
+        <div style={{fontSize:14,fontWeight:700,color:"#4A5060",marginBottom:10}}>Team KPI Report — Today</div>
+        <div style={{display:"flex",gap:6,marginBottom:14}}>{[{l:"Dials",v:teamKpi.reduce((s,k)=>s+(k.dials||0),0),c:"#C9A84C"},{l:"Contacts",v:teamKpi.reduce((s,k)=>s+(k.contacts||0),0),c:"#5B8BD4"},{l:"Appts",v:teamKpi.reduce((s,k)=>s+(k.appointments||0),0),c:"#4EBF8B"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:14,padding:"12px 6px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+        {AGENTS.map((ag,i)=>{const ak=teamKpi.find(t=>t.agent_id===ag.id)||{dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0};const roast=getRoast(ak.dials||0,ag.name);const pct=Math.min(((ak.dials||0)/DIAL_GOAL)*100,100);return(
+          <div key={ag.id} style={{...B.card,marginBottom:10,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.1+i*.04}s`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:10,background:`${ag.color}12`,color:ag.color,border:`1.5px solid ${ag.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800}}>{ag.name[0]}</div><div><div style={{fontSize:15,fontWeight:700}}>{ag.name}</div><div style={{fontSize:10,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{ak.contacts||0} contacts · {ak.appointments||0} appts · {ak.quotes||0} quotes</div></div></div><div style={{fontSize:22,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace",color:pct>=100?"#4EBF8B":pct>=70?"#C9A84C":"#EF4444"}}>{ak.dials||0}</div></div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{flex:1,height:5,background:"rgba(255,255,255,.03)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",borderRadius:4,width:`${pct}%`,background:pct>=100?"linear-gradient(90deg,#4EBF8B,#6FE4AB)":pct>=70?`linear-gradient(90deg,${ag.color},${ag.color}99)`:"linear-gradient(90deg,#EF4444,#EF444499)",animation:anim?"barIn .9s ease both":"none",animationDelay:`${.3+i*.04}s`,transformOrigin:"left"}}/></div><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,fontWeight:700,color:pct>=100?"#4EBF8B":"#2D3040"}}>{Math.round(pct)}%</span></div>
+            <div style={{background:`${roast.c}10`,border:`1px solid ${roast.c}20`,borderRadius:10,padding:"10px 12px"}}><div style={{fontSize:11,color:roast.c,fontWeight:600,lineHeight:1.4}}><span style={{marginRight:4}}>{roast.e}</span>{roast.msg}</div></div>
+          </div>);})}
+      </>}
+    </div>}
+
+    {/* ═══ LEADS PAGE ═══ */}
+    {page==="leads"&&<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",gap:6,padding:"12px 16px 0"}}>{[{l:"New",v:lstats.new||0,c:"#C9A84C"},{l:"Grabbed",v:lstats.grabbed||0,c:"#5B8BD4"},{l:"Booked",v:lstats.booked||0,c:"#4EBF8B"},{l:"Closed",v:lstats.closed||0,c:"#2D8F65"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:12,padding:"10px 6px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:20,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+
+      {/* LEAD LOCK STATUS BANNER */}
+      {!isAdmin&&<div style={{margin:"10px 16px 0",background:leadLock.unlocked?"rgba(78,191,139,.06)":"rgba(239,68,68,.06)",border:`1px solid ${leadLock.unlocked?"rgba(78,191,139,.15)":"rgba(239,68,68,.15)"}`,borderRadius:14,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:20}}>{leadLock.unlocked?"🔓":"🔒"}</span>
+            <span style={{fontSize:14,fontWeight:800,color:leadLock.unlocked?"#4EBF8B":"#EF4444"}}>{leadLock.unlocked?"LEADS UNLOCKED":"LEADS LOCKED"}</span>
+          </div>
+          {leadLock.unlocked&&<span style={{fontSize:11,fontWeight:700,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.remaining} left</span>}
+        </div>
+        {!leadLock.unlocked&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,lineHeight:1.5}}>You need <span style={{fontWeight:900}}>500 dials</span> to unlock leads. You have <span style={{fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>{leadLock.dials}</span>. Get on the damn phone.</div>}
+        {leadLock.unlocked&&<div style={{fontSize:11,color:"#4A5060",lineHeight:1.5}}>
+          <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#C9A84C"}}>{leadLock.dials}</span> dials today · <span style={{fontFamily:"'IBM Plex Mono',monospace",color:"#5B8BD4"}}>{leadLock.grabbedToday}/{leadLock.maxLeads}</span> leads grabbed
+          {leadLock.highIntentOnly&&<span style={{color:"#4EBF8B",fontWeight:700}}> · HIGH INTENT ONLY (sale made)</span>}
+        </div>}
+        {!leadLock.unlocked&&<div style={{marginTop:8,height:6,background:"rgba(255,255,255,.03)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min((leadLock.dials/500)*100,100)}%`,background:"linear-gradient(90deg,#EF4444,#D4845B,#C9A84C)",borderRadius:4,transition:"width .5s"}}/></div>}
+        {!leadLock.unlocked&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace",marginTop:4,textAlign:"right"}}>{leadLock.dials}/500 dials</div>}
+      </div>}
+
+      <div style={{display:"flex",gap:4,padding:"10px 16px 0"}}>{[{id:"feed",l:`Feed (${leads.length})`},{id:"mine",l:`Pipeline (${myLeads.length})`}].map(t=><button key={t.id} onClick={()=>setLtab(t.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:ltab===t.id?"rgba(201,168,76,.06)":"rgba(255,255,255,.015)",color:ltab===t.id?"#C9A84C":"#252830",fontSize:11,fontWeight:700,border:`1px solid ${ltab===t.id?"rgba(201,168,76,.1)":"rgba(255,255,255,.02)"}`}}>{t.l}</button>)}</div>
+      {isAdmin&&<div style={{padding:"10px 16px 0"}}><button onClick={()=>setShowAdd(true)} style={{width:"100%",padding:"12px",borderRadius:12,background:"rgba(201,168,76,.05)",border:"1px dashed rgba(201,168,76,.15)",color:"#C9A84C",fontSize:13,fontWeight:700}}>+ Add Lead</button></div>}
+      <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90,display:"flex",flexDirection:"column",gap:10}}>
+        {ltab==="feed"&&leads.map((l,i)=>{
+          const canGrab=isAdmin||( leadLock.unlocked && leadLock.remaining > 0 && (!leadLock.highIntentOnly || l.intent==="high") );
+          return(<div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`,opacity:(!isAdmin&&!canGrab)?0.5:1}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
+          {/* CONTACT INFO CARD */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {l.phone&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></div>}
+            {l.email&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
+            {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
+            {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
+            {l.profile_url&&l.profile_url.startsWith("http")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(212,107,140,.06)",border:"1px solid rgba(212,107,140,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🔗</span><span style={{fontSize:11,color:"#D46B8C",fontFamily:"'IBM Plex Mono',monospace"}}>Profile</span></div>}
+            {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
+          </div>
+          {l.post_text&&<div style={{fontSize:12,color:"#4A5060",lineHeight:1.5,marginBottom:10,padding:"8px 12px",background:"rgba(255,255,255,.015)",borderRadius:10,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{l.post_text.slice(0,200)}{l.post_text.length>200?"...":""}</div>}
+          {canGrab?<button onClick={()=>handleGrab(l.id)} style={{width:"100%",padding:"14px",borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800,letterSpacing:1,animation:"grabPulse 2s ease infinite"}}>⚡ GRAB THIS LEAD</button>
+          :<div style={{width:"100%",padding:"14px",borderRadius:14,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.1)",color:"#EF4444",fontSize:13,fontWeight:700,textAlign:"center",letterSpacing:1}}>🔒 {!leadLock.unlocked?`${500-leadLock.dials} MORE DIALS TO UNLOCK`:leadLock.remaining<=0?"DAILY LIMIT REACHED":"HIGH INTENT ONLY"}</div>}
+        </div>)})}
+        {ltab==="feed"&&!leads.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>No new leads right now</div>}
+        {ltab==="mine"&&myLeads.map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{fontSize:15,fontWeight:700}}>{l.name}</div><span style={{fontSize:8,fontWeight:700,color:SC[l.status],background:`${SC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{SL[l.status]||l.status}</span></div>
+          {/* CONTACT INFO ON MY LEADS */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+            {l.phone&&<span style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6}}>📞 {l.phone}</span>}
+            {l.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {l.email}</span>}
+            {l.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {l.location}</span>}
+          </div>
+          {l.notes&&<div style={{fontSize:11,color:"#3E4250",marginBottom:8}}>{l.notes}</div>}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["contacted","booked","closed"].filter(s=>s!==l.status).map(s=><button key={s} onClick={()=>handleLU(l.id,{status:s})} style={{padding:"7px 12px",borderRadius:8,background:`${SC[s]}10`,border:`1px solid ${SC[s]}20`,color:SC[s],fontSize:10,fontWeight:700,textTransform:"capitalize"}}>{s}</button>)}</div>
+        </div>)}
+        {ltab==="mine"&&!myLeads.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>Grab leads from the feed!</div>}
+      </div>
+    </div>}
+
+    {/* ═══ TRACKER PAGE ═══ */}
+    {page==="tracker"&&<>
+      <div style={{display:"flex",gap:5,padding:"12px 16px 0"}}>{["day","week","month","year"].map(p=><button key={p} onClick={()=>setPeriod(p)} style={{flex:1,padding:"9px 0",borderRadius:11,background:period===p?"rgba(201,168,76,.06)":"rgba(255,255,255,.015)",color:period===p?"#C9A84C":"#252830",fontSize:12,fontWeight:700,border:`1px solid ${period===p?"rgba(201,168,76,.1)":"rgba(255,255,255,.02)"}`}}>{p[0].toUpperCase()+p.slice(1)}</button>)}</div>
+      <div style={{display:"flex",gap:8,padding:"10px 16px 0"}}>{[{l:"TOTAL AP",v:$(totAP),c:"#C9A84C"},{l:"EST. COMM",v:$(totComm),c:"#4EBF8B"},{l:"POLICIES",v:totPol,c:"#5B8BD4"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:16,padding:"14px 8px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1.2,color:"#1E2028",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l}</div><div style={{fontSize:18,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+      <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90}}>
+        {AGENTS.map((m,i)=>{const row=data[m.id]||{ap:0,pol:0};const ag=agg[m.id]||{ap:0,pol:0};const comm=ag.ap*RATE;const pct=m.goal>0?Math.min((row.ap/m.goal)*100,100):-1;const isEd=f=>editing===`${m.id}-${f}`;const canEdit=isAdmin||m.id===me;return(
+          <div key={m.id} style={{...B.card,marginBottom:10,position:"relative",overflow:"hidden",animation:anim?"fadeIn .4s ease both":"none",animationDelay:`${.04+i*.03}s`}}>
+            <div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:m.color,borderRadius:"18px 0 0 18px"}}/>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,paddingLeft:4}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:10,background:`${m.color}12`,color:m.color,border:`1.5px solid ${m.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800}}>{m.name[0]}</div><div><div style={{fontSize:15,fontWeight:700}}>{m.name}</div>{m.goal>0&&<div style={{fontSize:10,color:"#1E2028",fontFamily:"'IBM Plex Mono',monospace"}}>Goal: {$(m.goal)}</div>}</div></div>{comm>0&&<div style={{fontSize:13,color:"#4EBF8B",fontWeight:700,fontFamily:"'IBM Plex Mono',monospace"}}>{$(comm)}</div>}</div>
+            {canEdit?<div style={{display:"flex",gap:0,paddingLeft:4}}>
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1.2,color:"#1E2028",fontFamily:"'IBM Plex Mono',monospace"}}>TODAY AP</div>{isEd("ap")?<input autoFocus type="number" inputMode="decimal" value={editVal} onChange={e=>setEditVal(e.target.value)} onBlur={()=>commitS(m.id,"ap")} onKeyDown={e=>onKey(e,m.id,"ap")} style={B.numIn}/>:<button onClick={()=>startEdit(m.id,"ap")} style={{...B.numBtn,color:row.ap>0?"#C9A84C":"#1A1C24"}}>{$(row.ap)}</button>}</div>
+              <div style={{width:1,background:"rgba(255,255,255,.025)",margin:"10px 8px"}}/>
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1.2,color:"#1E2028",fontFamily:"'IBM Plex Mono',monospace"}}>POLICIES</div>{isEd("pol")?<input autoFocus type="number" inputMode="numeric" value={editVal} onChange={e=>setEditVal(e.target.value)} onBlur={()=>commitS(m.id,"pol")} onKeyDown={e=>onKey(e,m.id,"pol")} style={B.numIn}/>:<button onClick={()=>startEdit(m.id,"pol")} style={{...B.numBtn,color:row.pol>0?"#CBD5E1":"#1A1C24"}}>{row.pol}</button>}</div>
+            </div>:<div style={{display:"flex",gap:16,paddingLeft:4}}><span style={{fontSize:13,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>AP: <span style={{color:"#C9A84C",fontWeight:700}}>{$(ag.ap)}</span></span><span style={{fontSize:13,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>Pol: <span style={{fontWeight:700}}>{ag.pol}</span></span></div>}
+            {pct>=0&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,paddingLeft:4}}><div style={{flex:1,height:5,background:"rgba(255,255,255,.025)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",borderRadius:4,width:`${pct}%`,background:pct>=100?"linear-gradient(90deg,#4EBF8B,#6FE4AB)":`linear-gradient(90deg,${m.color},${m.color}99)`,animation:anim?"barIn .9s ease both":"none",transformOrigin:"left"}}/></div><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,fontWeight:700,color:pct>=100?"#4EBF8B":"#2D3040"}}>{Math.round(pct)}%</span></div>}
+          </div>);})}
+      </div>
+    </>}
+
+    {/* BOTTOM NAV */}
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
+
+    {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
+
+    {showAdd&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAdd(false)}><AddForm onAdd={handleAdd} onClose={()=>setShowAdd(false)}/></div>}
+  </div>);
+}
+
+function AddForm({onAdd,onClose}){const[n,setN]=useState("");const[s,setS]=useState("Facebook");const[p,setP]=useState("");const[i,setI]=useState("high");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[co,setCo]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,marginTop:8}}/><input value={s} onChange={e=>setS(e.target.value)} placeholder="Source" style={{...B.modalIn,marginTop:8}}/><textarea value={p} onChange={e=>setP(e.target.value)} placeholder="What they posted / context..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><div style={{display:"flex",gap:8,marginTop:8}}>{["high","medium","low"].map(x=><button key={x} onClick={()=>setI(x)} style={{flex:1,padding:10,borderRadius:10,background:i===x?`${IC[x]}15`:"rgba(255,255,255,.02)",border:`1px solid ${i===x?IC[x]+"30":"rgba(255,255,255,.04)"}`,color:i===x?IC[x]:"#3E4250",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{x}</button>)}</div><button onClick={()=>{if(n.trim()){onAdd({name:n,source:s,post_text:p,intent:i,phone:ph,email:em,location:loc,company:co});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button></div>);}
+
+const B={card:{background:"rgba(10,11,16,.75)",borderRadius:18,padding:16,border:"1px solid rgba(255,255,255,.04)"},row:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,11,16,.7)",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(255,255,255,.03)",marginBottom:8},numBtn:{background:"rgba(255,255,255,.015)",border:"1px solid rgba(255,255,255,.04)",borderRadius:14,padding:"13px 16px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,width:"100%",maxWidth:160,textAlign:"center"},numIn:{background:"rgba(201,168,76,.06)",border:"2px solid rgba(201,168,76,.25)",borderRadius:14,padding:"13px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,color:"#C9A84C",width:"100%",maxWidth:160,textAlign:"center",WebkitAppearance:"none"},modalIn:{width:"100%",padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",color:"#E2E4EA",fontSize:14,fontFamily:"'Outfit',sans-serif"}};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

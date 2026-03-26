@@ -36,6 +36,7 @@ const ADMIN_PIN="9999";
 const RATE=0.25;
 const DIAL_GOAL=600;
 const API="/.netlify/functions/api";
+const CHAT_API="/.netlify/functions/chat";
 const IC={high:"#4EBF8B",medium:"#C9A84C",low:"#5B8BD4"};
 const SC={new:"#C9A84C",grabbed:"#5B8BD4",contacted:"#9B7ED8",booked:"#4EBF8B",closed:"#2D8F65"};
 const RC={prospect:"#C9A84C",contacted:"#5B8BD4",interviewed:"#9B7ED8",licensed:"#4EBF8B",dropped:"#EF4444"};
@@ -100,6 +101,11 @@ function App(){
   const[showAdd,setShowAdd]=useState(false);const[ltab,setLtab]=useState("feed");
   const[leadLock,setLeadLock]=useState({dials:0,unlocked:false,maxLeads:0,grabbedToday:0,remaining:0,highIntentOnly:false,salesToday:0});
   const[recruits,setRecruits]=useState([]);const[rstats,setRstats]=useState({});const[showAddRecruit,setShowAddRecruit]=useState(false);const[showImportRecruits,setShowImportRecruits]=useState(false);
+  const[chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hey! I'm Legacy AI — your insurance sales assistant. Ask me about scripts, objection handling, products, or anything to help you close more deals."}]);const[chatInput,setChatInput]=useState("");const[chatLoading,setChatLoading]=useState(false);
+
+  const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
+
+  useEffect(()=>{const el=document.getElementById("chat-scroll");if(el)el.scrollTop=el.scrollHeight;},[chatMsgs,chatLoading]);
 
   const td=todayK();const isAdmin=role==="admin";const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
@@ -300,8 +306,23 @@ function App(){
       </div>
     </div>}
 
+    {/* ═══ CHAT PAGE ═══ */}
+    {page==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
+      <div style={{padding:"12px 16px 8px"}}><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"#3E4250",marginTop:2}}>Your insurance sales assistant — powered by Claude</div></div>
+      <div id="chat-scroll" style={{flex:1,overflowY:"auto",padding:"0 16px 12px",display:"flex",flexDirection:"column",gap:10}}>
+        {chatMsgs.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeIn .3s ease both",animationDelay:`${i*.02}s`}}>
+          <div style={{maxWidth:"82%",padding:"10px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?"rgba(201,168,76,.1)":"rgba(255,255,255,.03)",border:`1px solid ${m.role==="user"?"rgba(201,168,76,.15)":"rgba(255,255,255,.05)"}`,color:m.role==="user"?"#C9A84C":"#B0B4C0",fontSize:13,lineHeight:1.55,fontWeight:m.role==="user"?500:400,whiteSpace:"pre-wrap"}}>{m.content}</div>
+        </div>)}
+        {chatLoading&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"10px 14px",borderRadius:"16px 16px 16px 4px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)",color:"#4A5060",fontSize:13}}><span style={{animation:"pulse 1s infinite"}}>Thinking...</span></div></div>}
+      </div>
+      <div style={{padding:"8px 16px",display:"flex",gap:8}}>
+        <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder="Ask Legacy AI anything..." style={{flex:1,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"12px 16px",color:"#E2E4EA",fontSize:14,fontFamily:"'Outfit',sans-serif"}}/>
+        <button onClick={sendChat} disabled={chatLoading||!chatInput.trim()} style={{padding:"0 18px",borderRadius:14,background:chatInput.trim()?"linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.1))":"rgba(255,255,255,.02)",border:`1px solid ${chatInput.trim()?"rgba(201,168,76,.25)":"rgba(255,255,255,.04)"}`,color:chatInput.trim()?"#C9A84C":"#2D3040",fontSize:14,fontWeight:700,transition:"all .2s"}}>Send</button>
+      </div>
+    </div>}
+
     {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"chat",l:"AI Chat",ic:"🤖"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
 
     {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
 

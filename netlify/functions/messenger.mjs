@@ -1,4 +1,5 @@
 import { neon } from "@netlify/neon";
+import Anthropic from "@anthropic-ai/sdk";
 
 // ═══════════════════════════════════════════════
 //  PASTE YOUR TOKENS HERE AFTER SETUP
@@ -8,6 +9,36 @@ const VERIFY_TOKEN = "landoflegacy2025";
 // ═══════════════════════════════════════════════
 
 const MESSENGER_API = "https://graph.facebook.com/v21.0/me/messages";
+const anthropic = new Anthropic();
+
+const MESSENGER_AI_PROMPT = `You are Legacy AI, a friendly and professional insurance sales assistant for Land of Legacy.
+Your goal is to qualify leads and book appointments through Messenger conversations.
+
+RULES:
+- Keep messages SHORT (2-3 sentences max) — this is Messenger, not email
+- Be warm, personal, and encouraging
+- Never be pushy — build trust first
+- Use the lead's first name when you have it
+- Use emojis sparingly but naturally
+
+QUALIFICATION FLOW:
+1. Greet warmly and ask if they're interested in learning about coverage options
+2. If interested: ask what type of coverage (life, health, final expense, mortgage protection)
+3. Gauge urgency and intent
+4. Book an appointment with a specialist
+
+RESPOND WITH JSON only:
+{
+  "reply": "your message to the lead",
+  "intent": "high" | "medium" | "low",
+  "status": "new" | "contacted" | "booked" | "discarded" | null,
+  "appointment_requested": true | false
+}
+
+Set status to "booked" only when they explicitly agree to an appointment.
+Set status to "discarded" only when they clearly say no/stop/unsubscribe.
+Set intent to "high" when they mention specific needs, urgency, or family protection.
+Return null for status to keep the current status unchanged.`;
 
 // Send a message back to the user via Messenger
 async function sendMessage(recipientId, text) {
@@ -36,65 +67,92 @@ async function sendQuickReplies(recipientId, text, replies) {
   });
 }
 
-// AI conversation logic - qualifies leads and books appointments
+// AI conversation logic - qualifies leads and books appointments via Claude
 async function handleMessage(senderId, messageText, senderName) {
   const sql = neon();
-  const msg = messageText.toLowerCase();
 
   // Check if we already have this lead in progress
   const existing = await sql`SELECT * FROM leads WHERE profile_url = ${senderId} AND status NOT IN ('closed','discarded') ORDER BY created_at DESC LIMIT 1`;
 
+  // Build conversation context for Claude
+  let conversationContext = "";
+  let lead = null;
+
   if (existing.length > 0) {
-    const lead = existing[0];
+    lead = existing[0];
+    conversationContext = `EXISTING LEAD:
+- Name: ${lead.name}
+- Current status: ${lead.status}
+- Intent level: ${lead.intent}
+- Notes so far: ${lead.notes || "none"}
+- Appointment time: ${lead.appointment_time || "not set"}
 
-    // Already booked
-    if (lead.status === "booked") {
-      await sendMessage(senderId, `Hey ${senderName}! You already have an appointment set. One of our specialists will be reaching out. Looking forward to helping you! 🙌`);
-      return;
-    }
-
-    // They replied to our outreach - check for booking intent
-    if (msg.includes("yes") || msg.includes("sure") || msg.includes("okay") || msg.includes("interested") || msg.includes("tell me more") || msg.includes("book") || msg.includes("schedule") || msg.includes("appointment")) {
-      // Update lead to booked
-      await sql`UPDATE leads SET status = 'booked', notes = COALESCE(notes,'') || ' | Replied YES via Messenger: ' || ${messageText} WHERE id = ${lead.id}`;
-      await sendMessage(senderId, `Awesome ${senderName}! 🎉 I'm setting you up with one of our top specialists right now. They'll reach out within the next few hours to get you taken care of. What's the best time for you - morning, afternoon, or evening?`);
-      return;
-    }
-
-    if (msg.includes("morning") || msg.includes("afternoon") || msg.includes("evening") || msg.includes("pm") || msg.includes("am")) {
-      await sql`UPDATE leads SET appointment_time = ${messageText}, notes = COALESCE(notes,'') || ' | Preferred time: ' || ${messageText} WHERE id = ${lead.id}`;
-      await sendMessage(senderId, `Perfect, I've noted that down. Our specialist will reach out during that time. Thanks ${senderName}, talk soon! 💪`);
-      return;
-    }
-
-    // Not sure / maybe
-    if (msg.includes("maybe") || msg.includes("not sure") || msg.includes("think about")) {
-      await sql`UPDATE leads SET status = 'contacted', notes = COALESCE(notes,'') || ' | Said maybe: ' || ${messageText} WHERE id = ${lead.id}`;
-      await sendMessage(senderId, `No pressure at all ${senderName}! Just know we've helped hundreds of families get protected. When you're ready, just message us back and we'll get you set up. 🤝`);
-      return;
-    }
-
-    // No / not interested
-    if (msg.includes("no") || msg.includes("not interested") || msg.includes("stop") || msg.includes("unsubscribe")) {
-      await sql`UPDATE leads SET status = 'discarded', notes = COALESCE(notes,'') || ' | Declined: ' || ${messageText} WHERE id = ${lead.id}`;
-      await sendMessage(senderId, `Totally understand ${senderName}. If anything changes, we're always here. Have a great day! 👋`);
-      return;
-    }
-
-    // General follow up
-    await sendMessage(senderId, `Thanks for reaching out ${senderName}! Would you like to schedule a quick 10-minute call with one of our specialists? No pressure, just seeing if we can help. 😊`);
-    return;
+The lead is replying to an ongoing conversation.`;
+  } else {
+    conversationContext = `NEW LEAD — this is their first message. Create a warm welcome and start qualifying.`;
   }
 
-  // NEW conversation - create lead and qualify
-  await sql`INSERT INTO leads (name, source, post_text, profile_url, intent, status, ai_draft) VALUES (${senderName || 'Messenger Lead'}, 'Facebook Messenger', ${messageText}, ${senderId}, 'medium', 'new', 'Auto-created from Messenger conversation')`;
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 300,
+      system: MESSENGER_AI_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Lead name: ${senderName || "Unknown"}
+${conversationContext}
 
-  // Welcome message with qualification
-  await sendQuickReplies(
-    senderId,
-    `Hey ${senderName || 'there'}! 👋 Thanks for reaching out to Land of Legacy. We help families and individuals protect what matters most.\n\nAre you looking to learn more about coverage options?`,
-    ["Yes, tell me more", "Book an appointment", "Just browsing"]
-  );
+Their message: "${messageText}"
+
+Respond with JSON only.`,
+        },
+      ],
+    });
+
+    const raw = response.content[0].text;
+    let parsed;
+    try {
+      // Extract JSON from response (handle markdown code blocks)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    } catch {
+      // Fallback if Claude doesn't return valid JSON
+      parsed = { reply: raw, intent: "medium", status: null, appointment_requested: false };
+    }
+
+    const { reply, intent, status, appointment_requested } = parsed;
+
+    if (!lead) {
+      // Create new lead
+      await sql`INSERT INTO leads (name, source, post_text, profile_url, intent, status, ai_draft)
+        VALUES (${senderName || 'Messenger Lead'}, 'Facebook Messenger', ${messageText}, ${senderId}, ${intent || 'medium'}, 'new', ${reply || ''})`;
+    } else {
+      // Update existing lead
+      const updates = [];
+      if (status) {
+        await sql`UPDATE leads SET status = ${status}, intent = ${intent || lead.intent}, notes = COALESCE(notes,'') || ' | AI: ' || ${messageText} WHERE id = ${lead.id}`;
+      } else {
+        await sql`UPDATE leads SET intent = ${intent || lead.intent}, notes = COALESCE(notes,'') || ' | AI: ' || ${messageText} WHERE id = ${lead.id}`;
+      }
+
+      if (appointment_requested) {
+        await sql`UPDATE leads SET appointment_time = 'Requested via Messenger' WHERE id = ${lead.id} AND (appointment_time IS NULL OR appointment_time = '')`;
+      }
+    }
+
+    // Send the AI-generated reply
+    await sendMessage(senderId, reply);
+
+  } catch (e) {
+    console.error("Claude AI error:", e);
+    // Fallback to a simple response if AI fails
+    if (!lead) {
+      await sql`INSERT INTO leads (name, source, post_text, profile_url, intent, status, ai_draft)
+        VALUES (${senderName || 'Messenger Lead'}, 'Facebook Messenger', ${messageText}, ${senderId}, 'medium', 'new', 'Auto-created from Messenger')`;
+    }
+    await sendMessage(senderId, `Hey ${senderName || 'there'}! Thanks for reaching out to Land of Legacy. One of our specialists will get back to you shortly!`);
+  }
 }
 
 export default async (req) => {

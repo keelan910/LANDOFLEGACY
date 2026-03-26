@@ -107,7 +107,8 @@ function App(){
   useEffect(()=>{fetch(`${API}?a=init`).catch(()=>{});},[]);
 
   const refresh=useCallback(async()=>{
-    const[nl,ml,ls]=await Promise.all([get("a=leads-list&status=new"),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
+    const leadsQ=me&&me!=="admin"?`a=leads-list&status=new&agent=${me}&date=${td}`:"a=leads-list&status=new";
+    const[nl,ml,ls]=await Promise.all([get(leadsQ),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
     if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
     if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}
@@ -207,15 +208,16 @@ function App(){
           const canGrab=isAdmin||( leadLock.unlocked && leadLock.remaining > 0 && (!leadLock.highIntentOnly || l.intent==="high") );
           return(<div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`,opacity:(!isAdmin&&!canGrab)?0.5:1}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
-          {/* CONTACT INFO CARD */}
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-            {l.phone&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></div>}
-            {l.email&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
+          {/* CONTACT INFO CARD — hidden when leads are locked for non-admin */}
+          {(isAdmin||leadLock.unlocked)?<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {l.phone&&!l.phone.startsWith("🔒")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></div>}
+            {l.email&&!l.email.startsWith("🔒")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
             {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
             {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
             {l.profile_url&&l.profile_url.startsWith("http")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(212,107,140,.06)",border:"1px solid rgba(212,107,140,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🔗</span><span style={{fontSize:11,color:"#D46B8C",fontFamily:"'IBM Plex Mono',monospace"}}>Profile</span></div>}
             {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
           </div>
+          :<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.08)",borderRadius:8,padding:"6px 12px"}}><span style={{fontSize:14}}>🔒</span><span style={{fontSize:11,color:"#EF4444",fontWeight:600}}>Contact info hidden — hit {DIAL_GOAL} dials to unlock</span></div>}
           {l.post_text&&<div style={{fontSize:12,color:"#4A5060",lineHeight:1.5,marginBottom:10,padding:"8px 12px",background:"rgba(255,255,255,.015)",borderRadius:10,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{l.post_text.slice(0,200)}{l.post_text.length>200?"...":""}</div>}
           {canGrab?<button onClick={()=>handleGrab(l.id)} style={{width:"100%",padding:"14px",borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800,letterSpacing:1,animation:"grabPulse 2s ease infinite"}}>⚡ GRAB THIS LEAD</button>
           :<div style={{width:"100%",padding:"14px",borderRadius:14,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.1)",color:"#EF4444",fontSize:13,fontWeight:700,textAlign:"center",letterSpacing:1}}>🔒 {!leadLock.unlocked?`${DIAL_GOAL-leadLock.dials} MORE DIALS TO UNLOCK`:leadLock.remaining<=0?"DAILY LIMIT REACHED":"HIGH INTENT ONLY"}</div>}

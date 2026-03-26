@@ -23,7 +23,26 @@ export default async (req) => {
     }
 
     // ── LEADS READ ──
-    if (a === "leads-list") { const s = url.searchParams.get("status") || "new"; const rows = s === "all" ? await sql`SELECT * FROM leads ORDER BY created_at DESC` : await sql`SELECT * FROM leads WHERE status = ${s} ORDER BY created_at DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
+    if (a === "leads-list") {
+      const s = url.searchParams.get("status") || "new";
+      const agent = url.searchParams.get("agent");
+      const rows = s === "all" ? await sql`SELECT * FROM leads ORDER BY created_at DESC` : await sql`SELECT * FROM leads WHERE status = ${s} ORDER BY created_at DESC`;
+
+      // If a non-admin agent is requesting, check their dials — hide phone/email if under 600
+      if (agent && agent !== "admin") {
+        const today = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+        const kpiRows = await sql`SELECT dials FROM kpis WHERE agent_id = ${agent} AND date_key = ${today}`;
+        const dials = kpiRows.length > 0 ? (kpiRows[0].dials || 0) : 0;
+        if (dials < 600) {
+          for (const row of rows) {
+            row.phone = row.phone ? "🔒 Unlock with 600 dials" : "";
+            row.email = row.email ? "🔒 Unlock with 600 dials" : "";
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ data: rows }), { headers: H });
+    }
     if (a === "leads-my") { const agent = url.searchParams.get("agent"); const rows = await sql`SELECT * FROM leads WHERE grabbed_by = ${agent} AND status NOT IN ('discarded','new') ORDER BY CASE status WHEN 'booked' THEN 1 WHEN 'contacted' THEN 2 WHEN 'grabbed' THEN 3 WHEN 'closed' THEN 4 END, created_at DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
     if (a === "leads-stats") { const rows = await sql`SELECT status, COUNT(*)::int as count FROM leads GROUP BY status`; const stats = {}; for (const r of rows) stats[r.status] = r.count; return new Response(JSON.stringify({ data: stats }), { headers: H }); }
 

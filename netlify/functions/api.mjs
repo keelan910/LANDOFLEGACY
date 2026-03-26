@@ -15,6 +15,22 @@ export default async (req) => {
       await sql`CREATE TABLE IF NOT EXISTS kpis (id SERIAL PRIMARY KEY, agent_id TEXT NOT NULL, date_key TEXT NOT NULL, dials INT DEFAULT 0, contacts INT DEFAULT 0, appointments INT DEFAULT 0, quotes INT DEFAULT 0, apps_submitted INT DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(agent_id, date_key))`;
       await sql`CREATE TABLE IF NOT EXISTS recruits (id SERIAL PRIMARY KEY, agent_id TEXT NOT NULL, name TEXT DEFAULT '', phone TEXT DEFAULT '', email TEXT DEFAULT '', location TEXT DEFAULT '', source TEXT DEFAULT '', notes TEXT DEFAULT '', stage TEXT DEFAULT 'prospect', licensed BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`;
       await sql`CREATE TABLE IF NOT EXISTS crm_leads (id SERIAL PRIMARY KEY, agent_id TEXT NOT NULL, name TEXT DEFAULT '', phone TEXT DEFAULT '', email TEXT DEFAULT '', company TEXT DEFAULT '', location TEXT DEFAULT '', source TEXT DEFAULT '', status TEXT DEFAULT 'new', notes TEXT DEFAULT '', last_contacted TIMESTAMPTZ, next_follow_up TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`;
+      await sql`CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, pin TEXT NOT NULL, color TEXT DEFAULT '#5B8BD4', goal INT DEFAULT 0, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW())`;
+      // Seed default agents if table is empty
+      const agentCount = await sql`SELECT COUNT(*)::int as cnt FROM agents`;
+      if (agentCount[0].cnt === 0) {
+        const defaults = [
+          {id:"ryan",name:"Ryan",pin:"1001",color:"#5B8BD4"},
+          {id:"john",name:"John",pin:"1002",color:"#4EBF8B"},
+          {id:"matt",name:"Matthew",pin:"1003",color:"#9B7ED8"},
+          {id:"chris",name:"Christian",pin:"1004",color:"#D46B8C"},
+          {id:"keel",name:"Keelan",pin:"1005",color:"#D4845B"},
+          {id:"kent",name:"Kente",pin:"1006",color:"#4EB8B5"},
+        ];
+        for (const ag of defaults) {
+          await sql`INSERT INTO agents (id,name,pin,color) VALUES (${ag.id},${ag.name},${ag.pin},${ag.color}) ON CONFLICT (id) DO NOTHING`;
+        }
+      }
       // Add missing columns to existing leads table
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
@@ -104,6 +120,12 @@ export default async (req) => {
     // ── CRM READ ──
     if (a === "crm-list") { const agent = url.searchParams.get("agent"); if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H }); const status = url.searchParams.get("status"); const rows = status && status !== "all" ? await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} AND status = ${status} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC` : await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
     if (a === "crm-stats") { const agent = url.searchParams.get("agent"); if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H }); const rows = await sql`SELECT status, COUNT(*)::int as count FROM crm_leads WHERE agent_id = ${agent} GROUP BY status`; const stats = {}; for (const r of rows) stats[r.status] = r.count; return new Response(JSON.stringify({ data: stats }), { headers: H }); }
+
+    // ── AGENTS READ ──
+    if (a === "agents-list") {
+      const rows = await sql`SELECT id, name, pin, color, goal, active FROM agents WHERE active = TRUE ORDER BY created_at`;
+      return new Response(JSON.stringify({ data: rows }), { headers: H });
+    }
 
     // ── RECRUITS READ ──
     if (a === "recruits-list") { const agent = url.searchParams.get("agent"); const rows = agent ? await sql`SELECT * FROM recruits WHERE agent_id = ${agent} ORDER BY CASE stage WHEN 'interviewed' THEN 1 WHEN 'contacted' THEN 2 WHEN 'prospect' THEN 3 WHEN 'licensed' THEN 4 WHEN 'dropped' THEN 5 END, created_at DESC` : await sql`SELECT * FROM recruits ORDER BY created_at DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
@@ -223,6 +245,33 @@ export default async (req) => {
       if (a === "sales-save") { const j = JSON.stringify(body.data); await sql`INSERT INTO daily_sales (date_key,data,updated_at) VALUES (${body.date},${j}::jsonb,NOW()) ON CONFLICT (date_key) DO UPDATE SET data=${j}::jsonb,updated_at=NOW()`; return new Response(JSON.stringify({ ok: true }), { headers: H }); }
 
       if (a === "kpi-save") { const { agent_id, date_key, dials, contacts, appointments, quotes, apps_submitted } = body; await sql`INSERT INTO kpis (agent_id,date_key,dials,contacts,appointments,quotes,apps_submitted,updated_at) VALUES (${agent_id},${date_key},${dials||0},${contacts||0},${appointments||0},${quotes||0},${apps_submitted||0},NOW()) ON CONFLICT (agent_id,date_key) DO UPDATE SET dials=${dials||0},contacts=${contacts||0},appointments=${appointments||0},quotes=${quotes||0},apps_submitted=${apps_submitted||0},updated_at=NOW()`; return new Response(JSON.stringify({ ok: true }), { headers: H }); }
+
+      // ── AGENTS WRITE ──
+      if (a === "agents-add") {
+        const { id, name, pin, color } = body;
+        if (!id || !name || !pin) return new Response(JSON.stringify({ error: "id, name, and pin are required" }), { status: 400, headers: H });
+        if (pin.length !== 4 || !/^\d{4}$/.test(pin)) return new Response(JSON.stringify({ error: "PIN must be exactly 4 digits" }), { status: 400, headers: H });
+        if (pin === "9999") return new Response(JSON.stringify({ error: "PIN 9999 is reserved for admin" }), { status: 400, headers: H });
+        // Check for duplicate PIN
+        const existing = await sql`SELECT id FROM agents WHERE pin = ${pin} AND active = TRUE`;
+        if (existing.length > 0) return new Response(JSON.stringify({ error: "This PIN is already in use by another agent" }), { status: 409, headers: H });
+        // Check for duplicate ID
+        const existingId = await sql`SELECT id FROM agents WHERE id = ${id}`;
+        if (existingId.length > 0) {
+          // Reactivate if was deactivated
+          await sql`UPDATE agents SET name=${name}, pin=${pin}, color=${color||'#5B8BD4'}, active=TRUE WHERE id=${id}`;
+        } else {
+          await sql`INSERT INTO agents (id,name,pin,color) VALUES (${id},${name},${pin},${color||'#5B8BD4'})`;
+        }
+        const rows = await sql`SELECT id, name, pin, color, goal, active FROM agents WHERE id = ${id}`;
+        return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
+      }
+      if (a === "agents-delete") {
+        const { id } = body;
+        if (!id) return new Response(JSON.stringify({ error: "id required" }), { status: 400, headers: H });
+        await sql`UPDATE agents SET active = FALSE WHERE id = ${id}`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
     }
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: H });

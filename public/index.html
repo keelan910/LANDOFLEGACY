@@ -23,8 +23,9 @@
 <script type="text/babel">
 const{useState,useEffect,useCallback}=React;
 
-// ═══ TEAM — AP REMOVED ═══
-const AGENTS=[
+// ═══ TEAM — LOADED FROM DATABASE ═══
+// Fallback agents used only until DB agents are loaded
+const DEFAULT_AGENTS=[
   {id:"ryan",name:"Ryan",goal:0,color:"#5B8BD4",pin:"1001"},
   {id:"john",name:"John",goal:0,color:"#4EBF8B",pin:"1002"},
   {id:"matt",name:"Matthew",goal:0,color:"#9B7ED8",pin:"1003"},
@@ -32,6 +33,7 @@ const AGENTS=[
   {id:"keel",name:"Keelan",goal:0,color:"#D4845B",pin:"1005"},
   {id:"kent",name:"Kente",goal:0,color:"#4EB8B5",pin:"1006"},
 ];
+const AGENT_COLORS=["#5B8BD4","#4EBF8B","#9B7ED8","#D46B8C","#D4845B","#4EB8B5","#E06B56","#56A0E0","#B5D45B","#D4B85B","#8BD45B","#D45BAF"];
 const ADMIN_PIN="9999";
 const RATE=0.25;
 const DIAL_GOAL=600;
@@ -50,7 +52,7 @@ const post=async(a,b)=>{try{const r=await fetch(`${API}?a=${a}`,{method:"POST",h
 const dayKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const todayK=()=>dayKey(new Date());
 const $=n=>"$"+Number(n||0).toLocaleString("en-US");
-const empty=()=>AGENTS.reduce((a,m)=>({...a,[m.id]:{ap:0,pol:0}}),{});
+const empty=(agentList)=>(agentList||DEFAULT_AGENTS).reduce((a,m)=>({...a,[m.id]:{ap:0,pol:0}}),{});
 function rangeDays(t){const n=new Date(),d=[];if(t==="week"){const dow=n.getDay();for(let i=dow;i>=0;i--){const x=new Date(n);x.setDate(n.getDate()-i);d.push(dayKey(x));}}else if(t==="month"){for(let i=1;i<=n.getDate();i++)d.push(dayKey(new Date(n.getFullYear(),n.getMonth(),i)));}else if(t==="year"){const y=n.getFullYear();for(let m=0;m<=n.getMonth();m++){const mx=m===n.getMonth()?n.getDate():new Date(y,m+1,0).getDate();for(let i=1;i<=mx;i++)d.push(dayKey(new Date(y,m,i)));}}return d;}
 
 // ═══ ROAST ENGINE — BRUTAL MODE ═══
@@ -82,9 +84,9 @@ function KF({label,value,onChange,showQuick}){
 // ═══ SCREENS ═══
 function Loading(){return(<div style={{minHeight:"100dvh",background:"#050507",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24}}><div style={{position:"relative",width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{position:"absolute",inset:0,border:"2px solid rgba(201,168,76,.08)",borderTopColor:"rgba(201,168,76,.5)",borderRadius:"50%",animation:"spin 1.2s linear infinite"}}/><span style={{fontSize:32,color:"#C9A84C",animation:"breathe 2.5s ease infinite"}}>◈</span></div><div style={{fontSize:18,fontWeight:900,letterSpacing:6,color:"#C9A84C"}}>LAND OF LEGACY</div><div style={{width:140,height:2,background:"rgba(255,255,255,.04)",overflow:"hidden",borderRadius:2}}><div style={{width:"100%",height:"100%",background:"linear-gradient(90deg,transparent,#C9A84C,transparent)",backgroundSize:"200% 100%",animation:"shimmer 1.5s ease infinite"}}/></div></div>);}
 
-function Lock({onLogin}){
+function Lock({onLogin,agents}){
   const[pin,setPin]=useState("");const[err,setErr]=useState(false);const[pr,setPr]=useState(null);
-  const go=p=>{const v=p||pin;if(v===ADMIN_PIN){onLogin("admin",null);return;}const ag=AGENTS.find(a=>a.pin===v);if(ag){onLogin("agent",ag.id);return;}setErr(true);setPin("");};
+  const go=p=>{const v=p||pin;if(v===ADMIN_PIN){onLogin("admin",null);return;}const ag=agents.find(a=>a.pin===v);if(ag){onLogin("agent",ag.id);return;}setErr(true);setPin("");};
   const tap=n=>{setPr(n);setErr(false);setTimeout(()=>setPr(null),100);const nx=pin+n;setPin(nx);if(nx.length===4)setTimeout(()=>go(nx),120);};
   return(<div style={{minHeight:"100dvh",background:"#050507",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
     <div style={{position:"absolute",top:"-30%",left:"50%",transform:"translateX(-50%)",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,168,76,.06) 0%,transparent 70%)"}}/>
@@ -98,6 +100,7 @@ function Lock({onLogin}){
 // ═══ MAIN APP ═══
 function App(){
   const[role,setRole]=useState(null);const[me,setMe]=useState(null);const[page,setPage]=useState("kpi");
+  const[agents,setAgents]=useState(DEFAULT_AGENTS);
   const[leads,setLeads]=useState([]);const[myLeads,setMyLeads]=useState([]);const[lstats,setLstats]=useState({});
   const[data,setData]=useState(null);const[allDays,setAllDays]=useState({});const[period,setPeriod]=useState("day");
   const[kpi,setKpi]=useState({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});const[teamKpi,setTeamKpi]=useState([]);
@@ -108,15 +111,16 @@ function App(){
   const[recruits,setRecruits]=useState([]);const[rstats,setRstats]=useState({});const[showAddRecruit,setShowAddRecruit]=useState(false);const[showImportRecruits,setShowImportRecruits]=useState(false);
   const[crmLeads,setCrmLeads]=useState([]);const[crmStats,setCrmStats]=useState({});const[showAddCrm,setShowAddCrm]=useState(false);const[showImportCrm,setShowImportCrm]=useState(false);const[crmFilter,setCrmFilter]=useState("all");const[crmEdit,setCrmEdit]=useState(null);
   const[chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hey! I'm Legacy AI — your insurance sales assistant. Ask me about scripts, objection handling, products, or anything to help you close more deals."}]);const[chatInput,setChatInput]=useState("");const[chatLoading,setChatLoading]=useState(false);
+  const[showManageTeam,setShowManageTeam]=useState(false);
 
   const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
 
   useEffect(()=>{const el=document.getElementById("chat-scroll");if(el)el.scrollTop=el.scrollHeight;},[chatMsgs,chatLoading]);
 
-  const td=todayK();const isAdmin=role==="admin";const myAgent=AGENTS.find(a=>a.id===me);
+  const td=todayK();const isAdmin=role==="admin";const AGENTS=agents;const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
 
-  useEffect(()=>{fetch(`${API}?a=init`).catch(()=>{});},[]);
+  useEffect(()=>{fetch(`${API}?a=init`).then(()=>fetch(`${API}?a=agents-list`)).then(r=>r.json()).then(d=>{if(d.data&&d.data.length)setAgents(d.data);}).catch(()=>{});},[]);
 
   const refresh=useCallback(async()=>{
     const leadsQ=me&&me!=="admin"?`a=leads-list&status=new&agent=${me}&date=${td}`:"a=leads-list&status=new";
@@ -133,20 +137,20 @@ function App(){
 
   const onLogin=useCallback(async(r,aid)=>{
     setRole(r);setMe(aid);setLoading(true);
-    const t=await post("sales-get",{date:td});setData(t.data?{...empty(),...t.data}:empty());
+    const t=await post("sales-get",{date:td});setData(t.data?{...empty(agents),...t.data}:empty(agents));
     const all=await post("sales-all",{});setAllDays(all.data||{});
     setLoading(false);setTimeout(()=>setAnim(true),60);
   },[]);
 
   useEffect(()=>{if(role)refresh();},[role,refresh]);
   useEffect(()=>{if(!role)return;const iv=setInterval(refresh,8000);return()=>clearInterval(iv);},[role,refresh]);
-  useEffect(()=>{if(!role||loading)return;const iv=setInterval(async()=>{const d=await post("sales-get",{date:td});if(d.data)setData(p=>({...empty(),...d.data}));},10000);return()=>clearInterval(iv);},[role,loading]);
+  useEffect(()=>{if(!role||loading)return;const iv=setInterval(async()=>{const d=await post("sales-get",{date:td});if(d.data)setData(p=>({...empty(agents),...d.data}));},10000);return()=>clearInterval(iv);},[role,loading,agents]);
 
   const saveSales=async nd=>{setData(nd);await post("sales-save",{date:td,data:nd});};
   const startEdit=(mid,f)=>{setEditing(`${mid}-${f}`);setEditVal("");};
   const commitS=(mid,f)=>{const v=parseFloat(editVal)||0;saveSales({...data,[mid]:{...data[mid],[f]:v}});setEditing(null);showToast(`${AGENTS.find(a=>a.id===mid)?.name} updated`);};
   const onKey=(e,mid,f)=>{if(e.key==="Enter"){e.target.blur();commitS(mid,f);}if(e.key==="Escape")setEditing(null);};
-  const getAgg=useCallback(t=>{if(t==="day")return data||empty();const days=rangeDays(t);const agg=empty();const src={...allDays,[td]:data};for(const d of days){const dd=src[d];if(dd)for(const m of AGENTS){agg[m.id].ap+=(dd[m.id]?.ap||0);agg[m.id].pol+=(dd[m.id]?.pol||0);}}return agg;},[data,allDays]);
+  const getAgg=useCallback(t=>{if(t==="day")return data||empty(agents);const days=rangeDays(t);const agg=empty(agents);const src={...allDays,[td]:data};for(const d of days){const dd=src[d];if(dd)for(const m of AGENTS){agg[m.id].ap+=(dd[m.id]?.ap||0);agg[m.id].pol+=(dd[m.id]?.pol||0);}}return agg;},[data,allDays,agents]);
   const saveKpi=async(f,v)=>{const nk={...kpi,[f]:v};setKpi(nk);await post("kpi-save",{agent_id:me||"admin",date_key:td,...nk});showToast("KPI updated");if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}};
   const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin",date:td});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
   const handleLU=async(id,u)=>{await post("leads-update",{id,...u});refresh();};
@@ -160,7 +164,11 @@ function App(){
   const handleCrmDelete=async id=>{await post("crm-delete",{id,agent_id:me});showToast("Lead removed");refresh();};
   const handleImportCrm=async list=>{const r=await post("crm-import",{agent_id:me,leads:list});if(r.error){showToast(r.error);}else{showToast(`${r.count||list.length} leads imported!`);refresh();}};
 
-  if(!role)return<Lock onLogin={onLogin}/>;
+  const refreshAgents=async()=>{const r=await fetch(`${API}?a=agents-list`);const d=await r.json();if(d.data&&d.data.length)setAgents(d.data);};
+  const handleAddAgent=async(agentData)=>{const r=await post("agents-add",agentData);if(r.error){showToast(r.error);return false;}showToast(`${agentData.name} added to team!`);refreshAgents();return true;};
+  const handleDeleteAgent=async(id)=>{const ag=agents.find(a=>a.id===id);await post("agents-delete",{id});showToast(`${ag?.name||id} removed from team`);refreshAgents();};
+
+  if(!role)return<Lock onLogin={onLogin} agents={agents}/>;
   if(loading||!data)return<Loading/>;
 
   const agg=getAgg(period);const totAP=Object.values(agg).reduce((s,v)=>s+(v.ap||0),0);const totPol=Object.values(agg).reduce((s,v)=>s+(v.pol||0),0);const totComm=totAP*RATE;const maxAP=Math.max(...AGENTS.map(m=>agg[m.id]?.ap||0),1);
@@ -185,7 +193,10 @@ function App(){
           <div key={tk.agent_id} style={{...B.row,...(isMe?{background:"rgba(201,168,76,.04)",border:"1px solid rgba(201,168,76,.1)"}:{}),animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.2+i*.04}s`}}><div style={{display:"flex",alignItems:"center",gap:10,flex:1}}><span style={{fontSize:i<3?20:14,minWidth:28,textAlign:"center"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span><div><div style={{fontSize:14,fontWeight:700,color:isMe?ag.color:"#E2E4EA"}}>{ag.name}{isMe?" (You)":""}</div><div style={{fontSize:10,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{tk.contacts||0} contacts · {tk.appointments||0} appts</div></div></div><div style={{fontSize:18,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace",color:pct>=100?"#4EBF8B":pct>=70?"#C9A84C":"#EF4444"}}>{tk.dials||0}</div></div>);})}
       </>}
       {isAdmin&&<>
-        <div style={{fontSize:14,fontWeight:700,color:"#4A5060",marginBottom:10}}>Team KPI Report — Today</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#4A5060"}}>Team KPI Report — Today</div>
+          <button onClick={()=>setShowManageTeam(true)} style={{padding:"7px 14px",borderRadius:10,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",color:"#C9A84C",fontSize:11,fontWeight:700}}>+ Manage Team</button>
+        </div>
         <div style={{display:"flex",gap:6,marginBottom:14}}>{[{l:"Dials",v:teamKpi.reduce((s,k)=>s+(k.dials||0),0),c:"#C9A84C"},{l:"Contacts",v:teamKpi.reduce((s,k)=>s+(k.contacts||0),0),c:"#5B8BD4"},{l:"Appts",v:teamKpi.reduce((s,k)=>s+(k.appointments||0),0),c:"#4EBF8B"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:14,padding:"12px 6px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
         {AGENTS.map((ag,i)=>{const ak=teamKpi.find(t=>t.agent_id===ag.id)||{dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0};const roast=getRoast(ak.dials||0,ag.name);const pct=Math.min(((ak.dials||0)/DIAL_GOAL)*100,100);return(
           <div key={ag.id} style={{...B.card,marginBottom:10,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.1+i*.04}s`}}>
@@ -405,6 +416,7 @@ function App(){
     {showImportRecruits&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportRecruits(false)}><ImportRecruitsForm onImport={handleImportRecruits} onClose={()=>setShowImportRecruits(false)}/></div>}
     {showAddCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddCrm(false)}><AddCrmForm onAdd={handleAddCrm} onClose={()=>setShowAddCrm(false)}/></div>}
     {showImportCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportCrm(false)}><ImportCrmForm onImport={handleImportCrm} onClose={()=>setShowImportCrm(false)}/></div>}
+    {showManageTeam&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowManageTeam(false)}><ManageTeamModal agents={agents} onAdd={handleAddAgent} onDelete={handleDeleteAgent} onClose={()=>setShowManageTeam(false)}/></div>}
   </div>);
 }
 
@@ -503,6 +515,59 @@ function ImportRecruitsForm({onImport,onClose}){const[raw,setRaw]=useState("");c
       <button onClick={doImport} style={{width:"100%",padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(78,191,139,.15),rgba(78,191,139,.08))",border:"1px solid rgba(78,191,139,.2)",color:"#4EBF8B",fontSize:15,fontWeight:800}}>Import {parsed.length} Recruit{parsed.length!==1?"s":""}</button>
     </div>}
   </div>);}
+
+function ManageTeamModal({agents,onAdd,onDelete,onClose}){
+  const[showAdd,setShowAdd]=useState(false);const[confirm,setConfirm]=useState(null);
+  const[name,setName]=useState("");const[pin,setPin]=useState("");const[err,setErr]=useState("");
+  const genId=n=>n.toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,12);
+  const nextColor=AGENT_COLORS[agents.length%AGENT_COLORS.length];
+  const doAdd=async()=>{
+    if(!name.trim()){setErr("Name is required");return;}
+    if(!pin||pin.length!==4||!/^\d{4}$/.test(pin)){setErr("PIN must be exactly 4 digits");return;}
+    if(pin==="9999"){setErr("PIN 9999 is reserved for admin");return;}
+    if(agents.find(a=>a.pin===pin)){setErr("This PIN is already used by another agent");return;}
+    const id=genId(name);
+    if(!id){setErr("Invalid name");return;}
+    const ok=await onAdd({id,name:name.trim(),pin,color:nextColor});
+    if(ok!==false){setName("");setPin("");setErr("");setShowAdd(false);}
+  };
+  return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{fontSize:18,fontWeight:800,color:"#C9A84C"}}>Manage Team</div>
+      <button onClick={onClose} style={{padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",color:"#4A5060",fontSize:11,fontWeight:600}}>Close</button>
+    </div>
+    <div style={{fontSize:11,color:"#3E4250",marginBottom:14,lineHeight:1.5}}>Add or remove team members. Each agent gets a unique 4-digit PIN to log in to their own portal.</div>
+
+    {/* CURRENT AGENTS */}
+    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+      {agents.map(ag=><div key={ag.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,.02)",borderRadius:12,padding:"10px 14px",border:"1px solid rgba(255,255,255,.04)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:8,background:`${ag.color}12`,color:ag.color,border:`1.5px solid ${ag.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800}}>{ag.name[0]}</div>
+          <div><div style={{fontSize:14,fontWeight:700,color:"#E2E4EA"}}>{ag.name}</div><div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>PIN: {ag.pin}</div></div>
+        </div>
+        {confirm===ag.id?<div style={{display:"flex",gap:6}}>
+          <button onClick={()=>{onDelete(ag.id);setConfirm(null);}} style={{padding:"5px 10px",borderRadius:6,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",color:"#EF4444",fontSize:10,fontWeight:700}}>Confirm</button>
+          <button onClick={()=>setConfirm(null)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",color:"#4A5060",fontSize:10,fontWeight:700}}>Cancel</button>
+        </div>
+        :<button onClick={()=>setConfirm(ag.id)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.08)",color:"#EF4444",fontSize:10,fontWeight:700}}>Remove</button>}
+      </div>)}
+    </div>
+
+    {/* ADD NEW AGENT */}
+    {!showAdd?<button onClick={()=>setShowAdd(true)} style={{width:"100%",padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.06))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>+ Add New Agent</button>
+    :<div style={{background:"rgba(255,255,255,.02)",borderRadius:14,padding:16,border:"1px solid rgba(201,168,76,.1)"}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#C9A84C",marginBottom:12}}>Add New Team Member</div>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Agent name" style={B.modalIn}/>
+      <input value={pin} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,4);setPin(v);}} placeholder="4-digit PIN code" inputMode="numeric" maxLength={4} style={{...B.modalIn,marginTop:8,fontFamily:"'IBM Plex Mono',monospace",letterSpacing:8,textAlign:"center",fontSize:20}}/>
+      <div style={{fontSize:10,color:"#3E4250",marginTop:6,textAlign:"center"}}>This PIN is what the agent will use to log in</div>
+      {err&&<div style={{fontSize:12,color:"#EF4444",marginTop:8,textAlign:"center"}}>{err}</div>}
+      <div style={{display:"flex",gap:8,marginTop:12}}>
+        <button onClick={doAdd} style={{flex:1,padding:12,borderRadius:12,background:"linear-gradient(135deg,rgba(78,191,139,.15),rgba(78,191,139,.08))",border:"1px solid rgba(78,191,139,.2)",color:"#4EBF8B",fontSize:14,fontWeight:800}}>Add Agent</button>
+        <button onClick={()=>{setShowAdd(false);setErr("");setName("");setPin("");}} style={{flex:1,padding:12,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.06)",color:"#4A5060",fontSize:14,fontWeight:700}}>Cancel</button>
+      </div>
+    </div>}
+  </div>);
+}
 
 const B={card:{background:"rgba(10,11,16,.75)",borderRadius:18,padding:16,border:"1px solid rgba(255,255,255,.04)"},row:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,11,16,.7)",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(255,255,255,.03)",marginBottom:8},numBtn:{background:"rgba(255,255,255,.015)",border:"1px solid rgba(255,255,255,.04)",borderRadius:14,padding:"13px 16px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,width:"100%",maxWidth:160,textAlign:"center"},numIn:{background:"rgba(201,168,76,.06)",border:"2px solid rgba(201,168,76,.25)",borderRadius:14,padding:"13px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,color:"#C9A84C",width:"100%",maxWidth:160,textAlign:"center",WebkitAppearance:"none"},modalIn:{width:"100%",padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",color:"#E2E4EA",fontSize:14,fontFamily:"'Outfit',sans-serif"}};
 

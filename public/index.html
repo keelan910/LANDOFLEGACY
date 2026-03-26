@@ -41,6 +41,8 @@ const IC={high:"#4EBF8B",medium:"#C9A84C",low:"#5B8BD4"};
 const SC={new:"#C9A84C",grabbed:"#5B8BD4",contacted:"#9B7ED8",booked:"#4EBF8B",closed:"#2D8F65"};
 const RC={prospect:"#C9A84C",contacted:"#5B8BD4",interviewed:"#9B7ED8",licensed:"#4EBF8B",dropped:"#EF4444"};
 const RL={prospect:"Prospect",contacted:"Contacted",interviewed:"Interviewed",licensed:"Licensed",dropped:"Dropped"};
+const CC={new:"#C9A84C",contacted:"#5B8BD4",follow_up:"#D4845B",appointment:"#9B7ED8",quoted:"#4EB8B5",closed:"#4EBF8B",lost:"#EF4444"};
+const CL={new:"New",contacted:"Contacted",follow_up:"Follow Up",appointment:"Appointment",quoted:"Quoted",closed:"Closed",lost:"Lost"};
 const SL={new:"New",grabbed:"Grabbed",contacted:"Contacted",booked:"Booked",closed:"Closed"};
 
 const get=async p=>{try{const r=await fetch(`${API}?${p}`);return(await r.json()).data||null;}catch{return null;}};
@@ -64,13 +66,16 @@ function getRoast(dials,name){
   return{msg:`${name} has ZERO dials. Not a single damn call. What the hell are you even doing here? You're wasting everyone's time including your own. Start dialing right now or pack your shit and leave. This is Land of Legacy — we don't carry dead weight.`,c:"#EF4444",e:"🚨"};
 }
 
-// ═══ KPI INPUT ═══
-function KF({label,value,onChange}){
+// ═══ KPI INPUT WITH AUTO-ADD ═══
+function KF({label,value,onChange,showQuick}){
   const[ed,setEd]=useState(false);const[v,setV]=useState("");
   return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <div style={{fontSize:7,fontWeight:700,letterSpacing:1.2,color:"#252830",fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{label}</div>
     {ed?<input autoFocus type="number" inputMode="numeric" value={v} onChange={e=>setV(e.target.value)} onBlur={()=>{onChange(parseInt(v)||0);setEd(false);}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}} style={B.numIn}/>
     :<button onClick={()=>{setV(String(value));setEd(true);}} style={{...B.numBtn,color:value>0?"#E2E4EA":"#1A1C24",fontSize:20,padding:"10px 14px"}}>{value}</button>}
+    {showQuick&&<div style={{display:"flex",gap:4,marginTop:2}}>
+      {[1,5,10,25].map(n=><button key={n} onClick={()=>onChange(value+n)} style={{padding:"4px 8px",borderRadius:8,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",color:"#C9A84C",fontSize:9,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace"}}>+{n}</button>)}
+    </div>}
   </div>);
 }
 
@@ -101,6 +106,7 @@ function App(){
   const[showAdd,setShowAdd]=useState(false);const[ltab,setLtab]=useState("feed");
   const[leadLock,setLeadLock]=useState({dials:0,unlocked:false,maxLeads:0,grabbedToday:0,remaining:0,highIntentOnly:false,salesToday:0});
   const[recruits,setRecruits]=useState([]);const[rstats,setRstats]=useState({});const[showAddRecruit,setShowAddRecruit]=useState(false);const[showImportRecruits,setShowImportRecruits]=useState(false);
+  const[crmLeads,setCrmLeads]=useState([]);const[crmStats,setCrmStats]=useState({});const[showAddCrm,setShowAddCrm]=useState(false);const[showImportCrm,setShowImportCrm]=useState(false);const[crmFilter,setCrmFilter]=useState("all");const[crmEdit,setCrmEdit]=useState(null);
   const[chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hey! I'm Legacy AI — your insurance sales assistant. Ask me about scripts, objection handling, products, or anything to help you close more deals."}]);const[chatInput,setChatInput]=useState("");const[chatLoading,setChatLoading]=useState(false);
 
   const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
@@ -121,6 +127,7 @@ function App(){
     const agentForRecruits=me||"admin";
     const[rlist,rs]=await Promise.all([get(`a=recruits-list&agent=${agentForRecruits}`),get(`a=recruits-stats&agent=${agentForRecruits}`)]);
     setRecruits(rlist||[]);setRstats(rs||{});
+    if(me){const[cl,cs]=await Promise.all([get(`a=crm-list&agent=${me}`),get(`a=crm-stats&agent=${me}`)]);setCrmLeads(cl||[]);setCrmStats(cs||{});}
     setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
   },[me,td]);
 
@@ -148,6 +155,10 @@ function App(){
   const handleRecruitUpdate=async(id,u)=>{await post("recruits-update",{id,...u});refresh();};
   const handleRecruitDelete=async id=>{await post("recruits-delete",{id});showToast("Recruit removed");refresh();};
   const handleImportRecruits=async list=>{const r=await post("recruits-import",{agent_id:me||"admin",recruits:list});if(r.error){showToast(r.error);}else{showToast(`${r.count||list.length} recruits imported!`);refresh();}};
+  const handleAddCrm=async d=>{await post("crm-add",{...d,agent_id:me});showToast("Lead added to CRM!");refresh();};
+  const handleCrmUpdate=async(id,u)=>{await post("crm-update",{id,agent_id:me,...u});refresh();};
+  const handleCrmDelete=async id=>{await post("crm-delete",{id,agent_id:me});showToast("Lead removed");refresh();};
+  const handleImportCrm=async list=>{const r=await post("crm-import",{agent_id:me,leads:list});if(r.error){showToast(r.error);}else{showToast(`${r.count||list.length} leads imported!`);refresh();}};
 
   if(!role)return<Lock onLogin={onLogin}/>;
   if(loading||!data)return<Loading/>;
@@ -158,7 +169,7 @@ function App(){
 
   return(<div style={{minHeight:"100dvh",background:"#050507",fontFamily:"'Outfit',sans-serif",color:"#E2E4EA",display:"flex",flexDirection:"column"}}>
     {/* HEADER */}
-    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"#2D3040",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><button onClick={()=>{setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});}} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#2D3040",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div>
+    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"#2D3040",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><button onClick={()=>{setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});setCrmLeads([]);setCrmStats({});setCrmFilter("all");setCrmEdit(null);}} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#2D3040",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div>
 
     {/* ═══ KPI PAGE ═══ */}
     {page==="kpi"&&<div style={{flex:1,padding:"12px 16px",overflowY:"auto",paddingBottom:90}}>
@@ -167,7 +178,7 @@ function App(){
           <div style={{fontSize:13,fontWeight:700,color:"#4A5060",marginBottom:16}}>Daily Dial Goal — {DIAL_GOAL}</div>
           <div style={{position:"relative",width:140,height:140,margin:"0 auto 16px"}}><svg width="140" height="140" viewBox="0 0 140 140" style={{transform:"rotate(-90deg)"}}><circle cx="70" cy="70" r="60" fill="none" stroke="rgba(255,255,255,.03)" strokeWidth="8"/><circle cx="70" cy="70" r="60" fill="none" stroke={dialPct>=100?"#4EBF8B":dialPct>=70?"#C9A84C":dialPct>=40?"#D4845B":"#EF4444"} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${dialPct*3.77} 377`} style={{transition:"stroke-dasharray .5s"}}/></svg><div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:36,fontWeight:900,color:dialPct>=100?"#4EBF8B":"#E2E4EA",fontFamily:"'IBM Plex Mono',monospace"}}>{kpi.dials}</div><div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>/ {DIAL_GOAL}</div></div></div>
           {myRoast&&<div style={{background:`${myRoast.c}10`,border:`1px solid ${myRoast.c}25`,borderRadius:14,padding:"14px 16px",marginBottom:16,textAlign:"left"}}><div style={{fontSize:13,color:myRoast.c,fontWeight:600,lineHeight:1.5}}><span style={{fontSize:18,marginRight:6}}>{myRoast.e}</span>{myRoast.msg}</div></div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[{k:"dials",l:"Dials"},{k:"contacts",l:"Contacts"},{k:"appointments",l:"Appts Set"},{k:"quotes",l:"Quotes"},{k:"apps_submitted",l:"Apps Sent"}].map(f=><div key={f.k} style={{background:"rgba(255,255,255,.015)",borderRadius:12,padding:"12px 8px",border:"1px solid rgba(255,255,255,.03)"}}><KF label={f.l} value={kpi[f.k]} onChange={v=>saveKpi(f.k,v)}/></div>)}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[{k:"dials",l:"Dials",q:true},{k:"contacts",l:"Contacts",q:true},{k:"appointments",l:"Appts Set"},{k:"quotes",l:"Quotes"},{k:"apps_submitted",l:"Apps Sent"}].map(f=><div key={f.k} style={{background:"rgba(255,255,255,.015)",borderRadius:12,padding:"12px 8px",border:"1px solid rgba(255,255,255,.03)"}}><KF label={f.l} value={kpi[f.k]} onChange={v=>saveKpi(f.k,v)} showQuick={f.q}/></div>)}</div>
         </div>
         <div style={{fontSize:14,fontWeight:700,color:"#4A5060",marginTop:16,marginBottom:10}}>Team Dial Leaderboard</div>
         {[...teamKpi].sort((a,b)=>(b.dials||0)-(a.dials||0)).map((tk,i)=>{const ag=AGENTS.find(a=>a.id===tk.agent_id);if(!ag)return null;const pct=Math.min((tk.dials/DIAL_GOAL)*100,100);const isMe=tk.agent_id===me;return(
@@ -216,7 +227,7 @@ function App(){
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div><div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source||"Facebook"}</div></div><span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:IC[l.intent]||"#C9A84C",background:`${IC[l.intent]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{l.intent}</span></div>
           {/* CONTACT INFO CARD — hidden when leads are locked for non-admin */}
           {(isAdmin||leadLock.unlocked)?<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-            {l.phone&&!l.phone.startsWith("🔒")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></div>}
+            {l.phone&&!l.phone.startsWith("🔒")&&<a href={`tel:${l.phone}`} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.06)",border:"1px solid rgba(91,139,212,.12)",borderRadius:8,padding:"4px 10px",textDecoration:"none"}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace"}}>{l.phone}</span></a>}
             {l.email&&!l.email.startsWith("🔒")&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></div>}
             {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
             {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"4px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
@@ -233,7 +244,7 @@ function App(){
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{fontSize:15,fontWeight:700}}>{l.name}</div><span style={{fontSize:8,fontWeight:700,color:SC[l.status],background:`${SC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase"}}>{SL[l.status]||l.status}</span></div>
           {/* CONTACT INFO ON MY LEADS */}
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
-            {l.phone&&<span style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6}}>📞 {l.phone}</span>}
+            {l.phone&&<a href={`tel:${l.phone}`} style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>📞 {l.phone}</a>}
             {l.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {l.email}</span>}
             {l.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {l.location}</span>}
           </div>
@@ -279,7 +290,7 @@ function App(){
             <span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:RC[r.stage]||"#C9A84C",background:`${RC[r.stage]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{RL[r.stage]||r.stage}</span>
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
-            {r.phone&&<span style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6}}>📞 {r.phone}</span>}
+            {r.phone&&<a href={`tel:${r.phone}`} style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>📞 {r.phone}</a>}
             {r.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {r.email}</span>}
             {r.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {r.location}</span>}
             {!r.phone&&!r.email&&!r.location&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
@@ -306,6 +317,69 @@ function App(){
       </div>
     </div>}
 
+    {/* ═══ CRM PAGE — AGENT-PRIVATE ═══ */}
+    {page==="crm"&&!isAdmin&&<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",gap:6,padding:"12px 16px 0"}}>{[{l:"New",v:crmStats.new||0,c:CC.new},{l:"Follow Up",v:crmStats.follow_up||0,c:CC.follow_up},{l:"Appt",v:crmStats.appointment||0,c:CC.appointment},{l:"Closed",v:crmStats.closed||0,c:CC.closed}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:12,padding:"10px 4px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:20,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+
+      {/* TOTAL COUNT */}
+      <div style={{padding:"8px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontSize:12,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{crmLeads.length} total leads</div></div>
+
+      {/* FILTER PILLS */}
+      <div style={{display:"flex",gap:4,padding:"8px 16px 0",overflowX:"auto",flexWrap:"nowrap"}}>{[{id:"all",l:"All"},{id:"new",l:"New"},{id:"contacted",l:"Contacted"},{id:"follow_up",l:"Follow Up"},{id:"appointment",l:"Appt"},{id:"quoted",l:"Quoted"},{id:"closed",l:"Closed"},{id:"lost",l:"Lost"}].map(f=><button key={f.id} onClick={()=>setCrmFilter(f.id)} style={{padding:"7px 12px",borderRadius:10,background:crmFilter===f.id?`${CC[f.id]||"#C9A84C"}10`:"rgba(255,255,255,.015)",color:crmFilter===f.id?(CC[f.id]||"#C9A84C"):"#252830",fontSize:10,fontWeight:700,border:`1px solid ${crmFilter===f.id?`${CC[f.id]||"#C9A84C"}25`:"rgba(255,255,255,.02)"}`,whiteSpace:"nowrap",flexShrink:0}}>{f.l}</button>)}</div>
+
+      {/* ACTION BUTTONS */}
+      <div style={{display:"flex",gap:6,padding:"10px 16px 0"}}>
+        <button onClick={()=>setShowAddCrm(true)} style={{flex:1,padding:"12px",borderRadius:12,background:"rgba(201,168,76,.05)",border:"1px dashed rgba(201,168,76,.15)",color:"#C9A84C",fontSize:13,fontWeight:700}}>+ Add Lead</button>
+        <button onClick={()=>setShowImportCrm(true)} style={{flex:1,padding:"12px",borderRadius:12,background:"rgba(91,139,212,.05)",border:"1px dashed rgba(91,139,212,.15)",color:"#5B8BD4",fontSize:13,fontWeight:700}}>📋 Import CSV</button>
+      </div>
+
+      {/* CRM LEAD LIST */}
+      <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90,display:"flex",flexDirection:"column",gap:10}}>
+        {crmLeads.filter(l=>crmFilter==="all"||l.status===crmFilter).map((l,i)=><div key={l.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.03}s`,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:CC[l.status]||"#C9A84C",borderRadius:"18px 0 0 18px"}}/>
+          <div style={{paddingLeft:6}}>
+            {/* HEADER */}
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <div><div style={{fontSize:15,fontWeight:700}}>{l.name||"Unknown"}</div>{l.source&&<div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{l.source}</div>}</div>
+              <span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:CC[l.status],background:`${CC[l.status]}12`,padding:"3px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{CL[l.status]||l.status}</span>
+            </div>
+
+            {/* CONTACT INFO WITH CLICK-TO-DIAL */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+              {l.phone&&<a href={`tel:${l.phone}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(91,139,212,.08)",border:"1px solid rgba(91,139,212,.15)",borderRadius:8,padding:"6px 12px",textDecoration:"none",cursor:"pointer"}}><span style={{fontSize:14}}>📞</span><span style={{fontSize:12,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",fontWeight:600}}>{l.phone}</span></a>}
+              {l.email&&<a href={`mailto:${l.email}`} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(155,126,216,.06)",border:"1px solid rgba(155,126,216,.12)",borderRadius:8,padding:"6px 12px",textDecoration:"none"}}><span style={{fontSize:12}}>✉️</span><span style={{fontSize:11,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace"}}>{l.email}</span></a>}
+              {l.location&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"6px 10px"}}><span style={{fontSize:12}}>📍</span><span style={{fontSize:11,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace"}}>{l.location}</span></div>}
+              {l.company&&<div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"6px 10px"}}><span style={{fontSize:12}}>🏢</span><span style={{fontSize:11,color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>{l.company}</span></div>}
+              {!l.phone&&!l.email&&!l.location&&!l.company&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
+            </div>
+
+            {/* NOTES */}
+            {l.notes&&<div style={{fontSize:11,color:"#4A5060",marginBottom:8,padding:"6px 10px",background:"rgba(255,255,255,.015)",borderRadius:8,borderLeft:"2px solid rgba(255,255,255,.04)",lineHeight:1.5}}>{l.notes}</div>}
+
+            {/* FOLLOW-UP DATE */}
+            {l.next_follow_up&&<div style={{fontSize:10,color:"#D4845B",fontFamily:"'IBM Plex Mono',monospace",marginBottom:8,display:"flex",alignItems:"center",gap:4}}>📅 Follow up: {l.next_follow_up}</div>}
+
+            {/* STATUS ACTIONS */}
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
+              {["new","contacted","follow_up","appointment","quoted","closed"].filter(s=>s!==l.status).map(s=><button key={s} onClick={()=>handleCrmUpdate(l.id,{status:s})} style={{padding:"6px 10px",borderRadius:8,background:`${CC[s]}10`,border:`1px solid ${CC[s]}20`,color:CC[s],fontSize:9,fontWeight:700}}>{CL[s]}</button>)}
+              {l.status!=="lost"&&<button onClick={()=>handleCrmUpdate(l.id,{status:"lost"})} style={{padding:"6px 10px",borderRadius:8,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",color:"#EF4444",fontSize:9,fontWeight:700}}>Lost</button>}
+            </div>
+
+            {/* EDIT / DELETE ROW */}
+            <div style={{display:"flex",gap:6,borderTop:"1px solid rgba(255,255,255,.03)",paddingTop:8,marginTop:4}}>
+              <button onClick={()=>setCrmEdit(crmEdit===l.id?null:l.id)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(201,168,76,.04)",border:"1px solid rgba(201,168,76,.08)",color:"#C9A84C",fontSize:9,fontWeight:700}}>✏️ Edit</button>
+              <button onClick={()=>handleCrmDelete(l.id)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(239,68,68,.04)",border:"1px solid rgba(239,68,68,.08)",color:"#EF4444",fontSize:9,fontWeight:700}}>🗑️ Delete</button>
+            </div>
+
+            {/* INLINE EDIT FORM */}
+            {crmEdit===l.id&&<CrmEditInline lead={l} onSave={(u)=>{handleCrmUpdate(l.id,u);setCrmEdit(null);}} onCancel={()=>setCrmEdit(null)}/>}
+          </div>
+        </div>)}
+        {crmLeads.filter(l=>crmFilter==="all"||l.status===crmFilter).length===0&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>{crmFilter==="all"?"No leads yet — add or import leads to get started!":"No leads with this status"}</div>}
+      </div>
+    </div>}
+    {page==="crm"&&isAdmin&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}><div style={{textAlign:"center",color:"#3E4250"}}><div style={{fontSize:40,marginBottom:16}}>🔒</div><div style={{fontSize:16,fontWeight:700}}>Agent CRM Only</div><div style={{fontSize:12,marginTop:8,color:"#252830"}}>The CRM is private to each agent. Log in with an agent PIN to access.</div></div></div>}
+
     {/* ═══ CHAT PAGE ═══ */}
     {page==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
       <div style={{padding:"12px 16px 8px"}}><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"#3E4250",marginTop:2}}>Your insurance sales assistant — powered by Claude</div></div>
@@ -322,19 +396,88 @@ function App(){
     </div>}
 
     {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"chat",l:"AI Chat",ic:"🤖"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"crm",l:"My CRM",ic:"📋"},{id:"leads",l:"Leads",ic:"⚡"},{id:"chat",l:"AI Chat",ic:"🤖"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:18}}>{t.ic}</span><span style={{fontSize:8,fontWeight:700,letterSpacing:.4}}>{t.l}</span></button>)}</div>
 
     {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
 
     {showAdd&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAdd(false)}><AddForm onAdd={handleAdd} onClose={()=>setShowAdd(false)}/></div>}
     {showAddRecruit&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddRecruit(false)}><AddRecruitForm onAdd={handleAddRecruit} onClose={()=>setShowAddRecruit(false)}/></div>}
     {showImportRecruits&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportRecruits(false)}><ImportRecruitsForm onImport={handleImportRecruits} onClose={()=>setShowImportRecruits(false)}/></div>}
+    {showAddCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddCrm(false)}><AddCrmForm onAdd={handleAddCrm} onClose={()=>setShowAddCrm(false)}/></div>}
+    {showImportCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportCrm(false)}><ImportCrmForm onImport={handleImportCrm} onClose={()=>setShowImportCrm(false)}/></div>}
   </div>);
 }
 
 function AddForm({onAdd,onClose}){const[n,setN]=useState("");const[s,setS]=useState("Facebook");const[p,setP]=useState("");const[i,setI]=useState("high");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[co,setCo]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,marginTop:8}}/><input value={s} onChange={e=>setS(e.target.value)} placeholder="Source" style={{...B.modalIn,marginTop:8}}/><textarea value={p} onChange={e=>setP(e.target.value)} placeholder="What they posted / context..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><div style={{display:"flex",gap:8,marginTop:8}}>{["high","medium","low"].map(x=><button key={x} onClick={()=>setI(x)} style={{flex:1,padding:10,borderRadius:10,background:i===x?`${IC[x]}15`:"rgba(255,255,255,.02)",border:`1px solid ${i===x?IC[x]+"30":"rgba(255,255,255,.04)"}`,color:i===x?IC[x]:"#3E4250",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{x}</button>)}</div><button onClick={()=>{if(n.trim()){onAdd({name:n,source:s,post_text:p,intent:i,phone:ph,email:em,location:loc,company:co});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button></div>);}
 
 function AddRecruitForm({onAdd,onClose}){const[n,setN]=useState("");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[src,setSrc]=useState("");const[notes,setNotes]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Recruit</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={src} onChange={e=>setSrc(e.target.value)} placeholder="Source (referral, LinkedIn, etc.)" style={{...B.modalIn,marginTop:8}}/><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes about this recruit..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><button onClick={()=>{if(n.trim()){onAdd({name:n,phone:ph,email:em,location:loc,source:src,notes:notes});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Recruit</button></div>);}
+
+function CrmEditInline({lead,onSave,onCancel}){
+  const[notes,setNotes]=useState(lead.notes||"");const[nfu,setNfu]=useState(lead.next_follow_up||"");const[ph,setPh]=useState(lead.phone||"");const[em,setEm]=useState(lead.email||"");const[co,setCo]=useState(lead.company||"");const[loc,setLoc]=useState(lead.location||"");
+  return(<div style={{marginTop:8,padding:"12px",background:"rgba(255,255,255,.02)",borderRadius:12,border:"1px solid rgba(255,255,255,.05)",display:"flex",flexDirection:"column",gap:6}}>
+    <input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone" style={{...B.modalIn,padding:"8px 10px",fontSize:12}}/>
+    <input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,padding:"8px 10px",fontSize:12}}/>
+    <input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,padding:"8px 10px",fontSize:12}}/>
+    <input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location" style={{...B.modalIn,padding:"8px 10px",fontSize:12}}/>
+    <input value={nfu} onChange={e=>setNfu(e.target.value)} placeholder="Next follow-up (e.g. Mar 28, 2pm)" style={{...B.modalIn,padding:"8px 10px",fontSize:12}}/>
+    <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." rows={2} style={{...B.modalIn,padding:"8px 10px",fontSize:12,resize:"none"}}/>
+    <div style={{display:"flex",gap:6}}>
+      <button onClick={()=>onSave({phone:ph,email:em,company:co,location:loc,notes,next_follow_up:nfu})} style={{flex:1,padding:"8px",borderRadius:8,background:"rgba(78,191,139,.08)",border:"1px solid rgba(78,191,139,.15)",color:"#4EBF8B",fontSize:11,fontWeight:700}}>Save</button>
+      <button onClick={onCancel} style={{flex:1,padding:"8px",borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",color:"#3E4250",fontSize:11,fontWeight:700}}>Cancel</button>
+    </div>
+  </div>);
+}
+
+function AddCrmForm({onAdd,onClose}){
+  const[n,setN]=useState("");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[co,setCo]=useState("");const[loc,setLoc]=useState("");const[src,setSrc]=useState("");const[notes,setNotes]=useState("");const[nfu,setNfu]=useState("");
+  return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead to CRM</div>
+    <input value={n} onChange={e=>setN(e.target.value)} placeholder="Name *" style={B.modalIn}/>
+    <input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/>
+    <input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/>
+    <input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,marginTop:8}}/>
+    <input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/>
+    <input value={src} onChange={e=>setSrc(e.target.value)} placeholder="Source (referral, cold call, etc.)" style={{...B.modalIn,marginTop:8}}/>
+    <input value={nfu} onChange={e=>setNfu(e.target.value)} placeholder="Next follow-up (e.g. Mar 28, 2pm)" style={{...B.modalIn,marginTop:8}}/>
+    <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/>
+    <button onClick={()=>{if(n.trim()){onAdd({name:n,phone:ph,email:em,company:co,location:loc,source:src,notes,next_follow_up:nfu});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button>
+  </div>);
+}
+
+function ImportCrmForm({onImport,onClose}){
+  const[raw,setRaw]=useState("");const[parsed,setParsed]=useState([]);const[err,setErr]=useState("");const[mode,setMode]=useState("paste");
+  const parseText=(text)=>{
+    if(!text.trim()){setErr("Paste your list or upload a file");return;}
+    const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+    const firstLine=lines[0].toLowerCase();
+    const hasHeader=firstLine.includes("name")&&(firstLine.includes("phone")||firstLine.includes("email"));
+    const dataLines=hasHeader?lines.slice(1):lines;
+    const results=[];
+    for(const line of dataLines){const parts=line.split(/[,\t]/).map(s=>s.trim());if(parts.length>=1&&parts[0]){results.push({name:parts[0],phone:parts[1]||"",email:parts[2]||"",company:parts[3]||"",location:parts[4]||"",source:parts[5]||"",notes:parts[6]||""});}}
+    if(!results.length){setErr("No leads found. Use format: Name, Phone, Email, Company, Location, Source, Notes");return;}
+    setErr("");setParsed(results);
+  };
+  const handleFile=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{setRaw(ev.target.result);parseText(ev.target.result);};reader.readAsText(file);};
+  return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:6,color:"#5B8BD4"}}>Import Leads</div>
+    <div style={{fontSize:11,color:"#3E4250",marginBottom:12,lineHeight:1.5}}>Upload a CSV file or paste a list. Format: <span style={{color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>Name, Phone, Email, Company, Location, Source, Notes</span><br/>Only Name is required. Headers are auto-detected.</div>
+    <div style={{display:"flex",gap:6,marginBottom:10}}>{[{id:"paste",l:"📋 Paste"},{id:"file",l:"📁 Upload File"}].map(m=><button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1,padding:"9px",borderRadius:10,background:mode===m.id?"rgba(91,139,212,.08)":"rgba(255,255,255,.02)",border:`1px solid ${mode===m.id?"rgba(91,139,212,.15)":"rgba(255,255,255,.04)"}`,color:mode===m.id?"#5B8BD4":"#3E4250",fontSize:11,fontWeight:700}}>{m.l}</button>)}</div>
+    {mode==="paste"&&<textarea value={raw} onChange={e=>{setRaw(e.target.value);setParsed([]);setErr("");}} placeholder={"John Smith, 555-1234, john@email.com, Acme Corp, Dallas TX\nJane Doe, 555-5678, , , Houston TX"} rows={6} style={{...B.modalIn,resize:"vertical",fontFamily:"'IBM Plex Mono',monospace",fontSize:12}}/>}
+    {mode==="file"&&<div style={{padding:"20px",borderRadius:12,border:"2px dashed rgba(91,139,212,.2)",background:"rgba(91,139,212,.03)",textAlign:"center"}}><input type="file" accept=".csv,.txt,.tsv" onChange={handleFile} style={{display:"none"}} id="crm-file-input"/><label htmlFor="crm-file-input" style={{cursor:"pointer",color:"#5B8BD4",fontSize:13,fontWeight:600}}>📁 Tap to select CSV file</label>{raw&&<div style={{fontSize:10,color:"#4EBF8B",marginTop:8}}>File loaded</div>}</div>}
+    {err&&<div style={{fontSize:12,color:"#EF4444",marginTop:8}}>{err}</div>}
+    {!parsed.length?<button onClick={()=>parseText(raw)} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(91,139,212,.15),rgba(91,139,212,.08))",border:"1px solid rgba(91,139,212,.2)",color:"#5B8BD4",fontSize:15,fontWeight:800}}>Preview Import</button>
+    :<div style={{marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#4EBF8B",marginBottom:8}}>Found {parsed.length} lead{parsed.length!==1?"s":""}</div>
+      <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+        {parsed.map((r,i)=><div key={i} style={{background:"rgba(255,255,255,.02)",borderRadius:10,padding:"8px 12px",border:"1px solid rgba(255,255,255,.04)"}}>
+          <div style={{fontSize:13,fontWeight:700}}>{r.name}</div>
+          <div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{[r.phone,r.email,r.company,r.location].filter(Boolean).join(" · ")||"No details"}</div>
+        </div>)}
+      </div>
+      <button onClick={()=>{onImport(parsed);onClose();}} style={{width:"100%",padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(78,191,139,.15),rgba(78,191,139,.08))",border:"1px solid rgba(78,191,139,.2)",color:"#4EBF8B",fontSize:15,fontWeight:800}}>Import {parsed.length} Lead{parsed.length!==1?"s":""}</button>
+    </div>}
+  </div>);
+}
 
 function ImportRecruitsForm({onImport,onClose}){const[raw,setRaw]=useState("");const[parsed,setParsed]=useState([]);const[err,setErr]=useState("");
   const parse=()=>{const text=raw.trim();if(!text){setErr("Paste your list above");return;}

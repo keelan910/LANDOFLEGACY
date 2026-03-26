@@ -38,6 +38,8 @@ const DIAL_GOAL=600;
 const API="/.netlify/functions/api";
 const IC={high:"#4EBF8B",medium:"#C9A84C",low:"#5B8BD4"};
 const SC={new:"#C9A84C",grabbed:"#5B8BD4",contacted:"#9B7ED8",booked:"#4EBF8B",closed:"#2D8F65"};
+const RC={prospect:"#C9A84C",contacted:"#5B8BD4",interviewed:"#9B7ED8",licensed:"#4EBF8B",dropped:"#EF4444"};
+const RL={prospect:"Prospect",contacted:"Contacted",interviewed:"Interviewed",licensed:"Licensed",dropped:"Dropped"};
 const SL={new:"New",grabbed:"Grabbed",contacted:"Contacted",booked:"Booked",closed:"Closed"};
 
 const get=async p=>{try{const r=await fetch(`${API}?${p}`);return(await r.json()).data||null;}catch{return null;}};
@@ -97,6 +99,7 @@ function App(){
   const[anim,setAnim]=useState(false);const[toast,setToast]=useState(null);const[loading,setLoading]=useState(false);
   const[showAdd,setShowAdd]=useState(false);const[ltab,setLtab]=useState("feed");
   const[leadLock,setLeadLock]=useState({dials:0,unlocked:false,maxLeads:0,grabbedToday:0,remaining:0,highIntentOnly:false,salesToday:0});
+  const[recruits,setRecruits]=useState([]);const[rstats,setRstats]=useState({});const[showAddRecruit,setShowAddRecruit]=useState(false);const[showImportRecruits,setShowImportRecruits]=useState(false);
 
   const td=todayK();const isAdmin=role==="admin";const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
@@ -108,6 +111,9 @@ function App(){
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
     if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
     if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}
+    const agentForRecruits=me||"admin";
+    const[rlist,rs]=await Promise.all([get(`a=recruits-list&agent=${agentForRecruits}`),get(`a=recruits-stats&agent=${agentForRecruits}`)]);
+    setRecruits(rlist||[]);setRstats(rs||{});
     setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
   },[me,td]);
 
@@ -131,6 +137,10 @@ function App(){
   const handleGrab=async id=>{const r=await post("leads-grab",{id,agent:me||"admin",date:td});if(r.error){showToast(r.error);return;}showToast("Lead grabbed!");refresh();};
   const handleLU=async(id,u)=>{await post("leads-update",{id,...u});refresh();};
   const handleAdd=async d=>{await post("leads-add",d);showToast("Lead added!");refresh();};
+  const handleAddRecruit=async d=>{await post("recruits-add",{...d,agent_id:me||"admin"});showToast("Recruit added!");refresh();};
+  const handleRecruitUpdate=async(id,u)=>{await post("recruits-update",{id,...u});refresh();};
+  const handleRecruitDelete=async id=>{await post("recruits-delete",{id});showToast("Recruit removed");refresh();};
+  const handleImportRecruits=async list=>{const r=await post("recruits-import",{agent_id:me||"admin",recruits:list});if(r.error){showToast(r.error);}else{showToast(`${r.count||list.length} recruits imported!`);refresh();}};
 
   if(!role)return<Lock onLogin={onLogin}/>;
   if(loading||!data)return<Loading/>;
@@ -245,16 +255,88 @@ function App(){
       </div>
     </>}
 
+    {/* ═══ RECRUITING PAGE ═══ */}
+    {page==="recruiting"&&<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",gap:6,padding:"12px 16px 0"}}>{[{l:"Prospects",v:rstats.prospect||0,c:"#C9A84C"},{l:"Contacted",v:rstats.contacted||0,c:"#5B8BD4"},{l:"Interviewed",v:rstats.interviewed||0,c:"#9B7ED8"},{l:"Licensed",v:rstats.licensed||0,c:"#4EBF8B"}].map((s,i)=><div key={i} style={{flex:1,background:"rgba(10,11,16,.8)",borderRadius:12,padding:"10px 6px",border:"1px solid rgba(255,255,255,.03)",textAlign:"center"}}><div style={{fontSize:7,fontWeight:700,letterSpacing:1,color:"#252830",fontFamily:"'IBM Plex Mono',monospace"}}>{s.l.toUpperCase()}</div><div style={{fontSize:20,fontWeight:800,color:s.c,fontFamily:"'IBM Plex Mono',monospace"}}>{s.v}</div></div>)}</div>
+
+      <div style={{display:"flex",gap:6,padding:"10px 16px 0"}}>
+        <button onClick={()=>setShowAddRecruit(true)} style={{flex:1,padding:"12px",borderRadius:12,background:"rgba(201,168,76,.05)",border:"1px dashed rgba(201,168,76,.15)",color:"#C9A84C",fontSize:13,fontWeight:700}}>+ Add Recruit</button>
+        <button onClick={()=>setShowImportRecruits(true)} style={{flex:1,padding:"12px",borderRadius:12,background:"rgba(91,139,212,.05)",border:"1px dashed rgba(91,139,212,.15)",color:"#5B8BD4",fontSize:13,fontWeight:700}}>📋 Import List</button>
+      </div>
+
+      <div style={{flex:1,padding:"10px 16px",overflowY:"auto",paddingBottom:90,display:"flex",flexDirection:"column",gap:10}}>
+        {recruits.filter(r=>r.stage!=="dropped").map((r,i)=><div key={r.id} style={{...B.card,animation:anim?"slideUp .4s ease both":"none",animationDelay:`${.05+i*.04}s`}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <div><div style={{fontSize:15,fontWeight:700}}>{r.name||"Unknown"}</div>{r.source&&<div style={{fontSize:11,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{r.source}</div>}</div>
+            <span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:RC[r.stage]||"#C9A84C",background:`${RC[r.stage]||"#C9A84C"}12`,padding:"2px 8px",borderRadius:6,fontFamily:"'IBM Plex Mono',monospace",textTransform:"uppercase",height:"fit-content"}}>{RL[r.stage]||r.stage}</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+            {r.phone&&<span style={{fontSize:10,color:"#5B8BD4",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(91,139,212,.06)",padding:"2px 8px",borderRadius:6}}>📞 {r.phone}</span>}
+            {r.email&&<span style={{fontSize:10,color:"#9B7ED8",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(155,126,216,.06)",padding:"2px 8px",borderRadius:6}}>✉️ {r.email}</span>}
+            {r.location&&<span style={{fontSize:10,color:"#4EBF8B",fontFamily:"'IBM Plex Mono',monospace",background:"rgba(78,191,139,.06)",padding:"2px 8px",borderRadius:6}}>📍 {r.location}</span>}
+            {!r.phone&&!r.email&&!r.location&&<div style={{fontSize:11,color:"#252830",fontStyle:"italic"}}>No contact details</div>}
+          </div>
+          {r.notes&&<div style={{fontSize:11,color:"#3E4250",marginBottom:8,padding:"6px 10px",background:"rgba(255,255,255,.015)",borderRadius:8,borderLeft:"2px solid rgba(255,255,255,.04)"}}>{r.notes}</div>}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {["prospect","contacted","interviewed","licensed"].filter(s=>s!==r.stage).map(s=><button key={s} onClick={()=>handleRecruitUpdate(r.id,{stage:s})} style={{padding:"7px 12px",borderRadius:8,background:`${RC[s]}10`,border:`1px solid ${RC[s]}20`,color:RC[s],fontSize:10,fontWeight:700,textTransform:"capitalize"}}>{RL[s]}</button>)}
+            <button onClick={()=>handleRecruitUpdate(r.id,{stage:"dropped"})} style={{padding:"7px 12px",borderRadius:8,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",color:"#EF4444",fontSize:10,fontWeight:700}}>Drop</button>
+          </div>
+        </div>)}
+        {recruits.filter(r=>r.stage==="dropped").length>0&&<>
+          <div style={{fontSize:12,fontWeight:700,color:"#252830",marginTop:8}}>Dropped ({recruits.filter(r=>r.stage==="dropped").length})</div>
+          {recruits.filter(r=>r.stage==="dropped").map((r,i)=><div key={r.id} style={{...B.card,opacity:0.5}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:14,fontWeight:600}}>{r.name||"Unknown"}</div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>handleRecruitUpdate(r.id,{stage:"prospect"})} style={{padding:"5px 10px",borderRadius:6,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",color:"#C9A84C",fontSize:9,fontWeight:700}}>Restore</button>
+                <button onClick={()=>handleRecruitDelete(r.id)} style={{padding:"5px 10px",borderRadius:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",color:"#EF4444",fontSize:9,fontWeight:700}}>Delete</button>
+              </div>
+            </div>
+          </div>)}
+        </>}
+        {!recruits.length&&<div style={{textAlign:"center",padding:40,color:"#1E2028",fontSize:14}}>No recruits yet — start building your team!</div>}
+      </div>
+    </div>}
+
     {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"rgba(5,5,7,.97)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,.03)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"leads",l:"Leads",ic:"⚡"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 0",background:"transparent",color:page===t.id?"#C9A84C":"#1A1C24",transition:"color .2s"}}><span style={{fontSize:20}}>{t.ic}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:.6}}>{t.l}</span></button>)}</div>
 
     {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
 
     {showAdd&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAdd(false)}><AddForm onAdd={handleAdd} onClose={()=>setShowAdd(false)}/></div>}
+    {showAddRecruit&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddRecruit(false)}><AddRecruitForm onAdd={handleAddRecruit} onClose={()=>setShowAddRecruit(false)}/></div>}
+    {showImportRecruits&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportRecruits(false)}><ImportRecruitsForm onImport={handleImportRecruits} onClose={()=>setShowImportRecruits(false)}/></div>}
   </div>);
 }
 
 function AddForm({onAdd,onClose}){const[n,setN]=useState("");const[s,setS]=useState("Facebook");const[p,setP]=useState("");const[i,setI]=useState("high");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[co,setCo]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Lead</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={co} onChange={e=>setCo(e.target.value)} placeholder="Company" style={{...B.modalIn,marginTop:8}}/><input value={s} onChange={e=>setS(e.target.value)} placeholder="Source" style={{...B.modalIn,marginTop:8}}/><textarea value={p} onChange={e=>setP(e.target.value)} placeholder="What they posted / context..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><div style={{display:"flex",gap:8,marginTop:8}}>{["high","medium","low"].map(x=><button key={x} onClick={()=>setI(x)} style={{flex:1,padding:10,borderRadius:10,background:i===x?`${IC[x]}15`:"rgba(255,255,255,.02)",border:`1px solid ${i===x?IC[x]+"30":"rgba(255,255,255,.04)"}`,color:i===x?IC[x]:"#3E4250",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{x}</button>)}</div><button onClick={()=>{if(n.trim()){onAdd({name:n,source:s,post_text:p,intent:i,phone:ph,email:em,location:loc,company:co});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Lead</button></div>);}
+
+function AddRecruitForm({onAdd,onClose}){const[n,setN]=useState("");const[ph,setPh]=useState("");const[em,setEm]=useState("");const[loc,setLoc]=useState("");const[src,setSrc]=useState("");const[notes,setNotes]=useState("");return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:18,fontWeight:800,marginBottom:16,color:"#C9A84C"}}>Add Recruit</div><input value={n} onChange={e=>setN(e.target.value)} placeholder="Name" style={B.modalIn}/><input value={ph} onChange={e=>setPh(e.target.value)} placeholder="Phone number" style={{...B.modalIn,marginTop:8}}/><input value={em} onChange={e=>setEm(e.target.value)} placeholder="Email" style={{...B.modalIn,marginTop:8}}/><input value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Location (City, State)" style={{...B.modalIn,marginTop:8}}/><input value={src} onChange={e=>setSrc(e.target.value)} placeholder="Source (referral, LinkedIn, etc.)" style={{...B.modalIn,marginTop:8}}/><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes about this recruit..." rows={3} style={{...B.modalIn,marginTop:8,resize:"none"}}/><button onClick={()=>{if(n.trim()){onAdd({name:n,phone:ph,email:em,location:loc,source:src,notes:notes});onClose();}}} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08))",border:"1px solid rgba(201,168,76,.2)",color:"#C9A84C",fontSize:15,fontWeight:800}}>Add Recruit</button></div>);}
+
+function ImportRecruitsForm({onImport,onClose}){const[raw,setRaw]=useState("");const[parsed,setParsed]=useState([]);const[err,setErr]=useState("");
+  const parse=()=>{const text=raw.trim();if(!text){setErr("Paste your list above");return;}
+    const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);const results=[];
+    for(const line of lines){const parts=line.split(/[,\t]/).map(s=>s.trim());if(parts.length>=1&&parts[0]){const rec={name:parts[0],phone:parts[1]||"",email:parts[2]||"",location:parts[3]||"",source:parts[4]||"",notes:parts[5]||""};results.push(rec);}}
+    if(!results.length){setErr("Could not parse any names. Use format: Name, Phone, Email, Location, Source, Notes (one per line)");return;}
+    setErr("");setParsed(results);};
+  const doImport=()=>{onImport(parsed);onClose();};
+  return(<div style={{width:"100%",background:"#0A0B10",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid rgba(255,255,255,.06)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:6,color:"#5B8BD4"}}>Import Recruits</div>
+    <div style={{fontSize:11,color:"#3E4250",marginBottom:12,lineHeight:1.5}}>Paste a list — one person per line. Format: <span style={{color:"#C9A84C",fontFamily:"'IBM Plex Mono',monospace"}}>Name, Phone, Email, Location, Source, Notes</span><br/>Only Name is required. Tab or comma separated.</div>
+    <textarea value={raw} onChange={e=>{setRaw(e.target.value);setParsed([]);setErr("");}} placeholder={"John Smith, 555-1234, john@email.com, Dallas TX, Referral\nJane Doe, 555-5678, , Houston TX"} rows={6} style={{...B.modalIn,resize:"vertical",fontFamily:"'IBM Plex Mono',monospace",fontSize:12}}/>
+    {err&&<div style={{fontSize:12,color:"#EF4444",marginTop:8}}>{err}</div>}
+    {!parsed.length?<button onClick={parse} style={{width:"100%",marginTop:12,padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(91,139,212,.15),rgba(91,139,212,.08))",border:"1px solid rgba(91,139,212,.2)",color:"#5B8BD4",fontSize:15,fontWeight:800}}>Preview Import</button>
+    :<div style={{marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#4EBF8B",marginBottom:8}}>Found {parsed.length} recruit{parsed.length!==1?"s":""}</div>
+      <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+        {parsed.map((r,i)=><div key={i} style={{background:"rgba(255,255,255,.02)",borderRadius:10,padding:"8px 12px",border:"1px solid rgba(255,255,255,.04)"}}>
+          <div style={{fontSize:13,fontWeight:700}}>{r.name}</div>
+          <div style={{fontSize:10,color:"#3E4250",fontFamily:"'IBM Plex Mono',monospace"}}>{[r.phone,r.email,r.location].filter(Boolean).join(" · ")||"No details"}</div>
+        </div>)}
+      </div>
+      <button onClick={doImport} style={{width:"100%",padding:14,borderRadius:14,background:"linear-gradient(135deg,rgba(78,191,139,.15),rgba(78,191,139,.08))",border:"1px solid rgba(78,191,139,.2)",color:"#4EBF8B",fontSize:15,fontWeight:800}}>Import {parsed.length} Recruit{parsed.length!==1?"s":""}</button>
+    </div>}
+  </div>);}
 
 const B={card:{background:"rgba(10,11,16,.75)",borderRadius:18,padding:16,border:"1px solid rgba(255,255,255,.04)"},row:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,11,16,.7)",borderRadius:14,padding:"14px 16px",border:"1px solid rgba(255,255,255,.03)",marginBottom:8},numBtn:{background:"rgba(255,255,255,.015)",border:"1px solid rgba(255,255,255,.04)",borderRadius:14,padding:"13px 16px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,width:"100%",maxWidth:160,textAlign:"center"},numIn:{background:"rgba(201,168,76,.06)",border:"2px solid rgba(201,168,76,.25)",borderRadius:14,padding:"13px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:24,fontWeight:700,color:"#C9A84C",width:"100%",maxWidth:160,textAlign:"center",WebkitAppearance:"none"},modalIn:{width:"100%",padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",color:"#E2E4EA",fontSize:14,fontFamily:"'Outfit',sans-serif"}};
 

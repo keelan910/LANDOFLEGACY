@@ -138,9 +138,10 @@ function App(){
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
     if(me){const k=await get(`a=kpi-get&agent=${me}&date=${td}`);if(k)setKpi({dials:k.dials||0,contacts:k.contacts||0,appointments:k.appointments||0,quotes:k.quotes||0,apps_submitted:k.apps_submitted||0});}
     if(me){const lk=await get(`a=leads-lock-check&agent=${me}&date=${td}`);if(lk)setLeadLock(lk);}
-    const agentForRecruits=me||"admin";
-    const[rlist,rs]=await Promise.all([get(`a=recruits-list&agent=${agentForRecruits}`),get(`a=recruits-stats&agent=${agentForRecruits}`)]);
-    setRecruits(rlist||[]);setRstats(rs||{});
+    const[rlist,rs]=await Promise.all([
+  isAdmin ? get("a=recruits-list") : get(`a=recruits-list&agent=${me}`),
+  isAdmin ? get("a=recruits-stats") : get(`a=recruits-stats&agent=${me}`)
+]);
     if(me){const[cl,cs]=await Promise.all([get(`a=crm-list&agent=${me}`),get(`a=crm-stats&agent=${me}`)]);setCrmLeads(cl||[]);setCrmStats(cs||{});}
     setTeamKpi(await get(`a=kpi-team&date=${td}`)||[]);
   },[me,td]);

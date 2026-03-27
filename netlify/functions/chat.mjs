@@ -13,14 +13,16 @@ You help agents with:
 Keep responses concise, actionable, and encouraging. Use a confident, team-oriented tone.
 If asked about something outside insurance sales, politely redirect to how you can help with their sales goals.`;
 
-const H = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
 export default async (req) => {
+  const origin = req.headers.get("origin") || "";
+  const siteHost = new URL(req.url).origin;
+  const allowedOrigin = origin === siteHost ? origin : siteHost;
+  const H = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
   if (req.method === "OPTIONS") return new Response("ok", { headers: H });
 
   if (req.method !== "POST") {
@@ -30,8 +32,8 @@ export default async (req) => {
   try {
     const { message, history } = await req.json();
 
-    if (!message || typeof message !== "string") {
-      return new Response(JSON.stringify({ error: "Message is required" }), { status: 400, headers: H });
+    if (!message || typeof message !== "string" || message.length > 2000) {
+      return new Response(JSON.stringify({ error: "Message is required and must be under 2000 characters" }), { status: 400, headers: H });
     }
 
     // Build messages array from history + new message

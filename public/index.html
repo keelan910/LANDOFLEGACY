@@ -34,7 +34,6 @@ const DEFAULT_AGENTS=[
   {id:"kent",name:"Kente",goal:0,color:"#4EB8B5"},
 ];
 const AGENT_COLORS=["#5B8BD4","#4EBF8B","#9B7ED8","#D46B8C","#D4845B","#4EB8B5","#E06B56","#56A0E0","#B5D45B","#D4B85B","#8BD45B","#D45BAF"];
-const ADMIN_PIN="__SERVER_SIDE__"; // PIN verification happens server-side now
 const RATE=0.25;
 const DIAL_GOAL=600;
 const API="/.netlify/functions/api";
@@ -47,8 +46,14 @@ const CC={new:"#C9A84C",contacted:"#5B8BD4",follow_up:"#D4845B",appointment:"#9B
 const CL={new:"New",contacted:"Contacted",follow_up:"Follow Up",appointment:"Appointment",quoted:"Quoted",closed:"Closed",lost:"Lost"};
 const SL={new:"New",grabbed:"Grabbed",contacted:"Contacted",booked:"Booked",closed:"Closed"};
 
-const get=async p=>{try{const r=await fetch(`${API}?${p}`);return(await r.json()).data||null;}catch{return null;}};
-const post=async(a,b)=>{try{const r=await fetch(`${API}?a=${a}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});return await r.json();}catch(e){return{error:e.message};}};
+// ═══ AUTH TOKEN (in-memory only — never persisted to storage) ═══
+let _authToken = null;
+const setAuthToken = (t) => { _authToken = t; };
+const getAuthToken = () => _authToken;
+const authHeaders = () => _authToken ? { "Authorization": `Bearer ${_authToken}` } : {};
+
+const get=async p=>{try{const r=await fetch(`${API}?${p}`,{headers:authHeaders()});if(r.status===401){window.__handleAuthExpired&&window.__handleAuthExpired();return null;}return(await r.json()).data||null;}catch{return null;}};
+const post=async(a,b)=>{try{const r=await fetch(`${API}?a=${a}`,{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify(b)});if(r.status===401){window.__handleAuthExpired&&window.__handleAuthExpired();return{error:"Session expired"};}return await r.json();}catch(e){return{error:e.message};}};
 const dayKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const todayK=()=>dayKey(new Date());
 const $=n=>"$"+Number(n||0).toLocaleString("en-US");
@@ -86,7 +91,7 @@ function Loading(){return(<div style={{minHeight:"100dvh",background:"#050507",d
 
 function Lock({onLogin,agents}){
   const[pin,setPin]=useState("");const[err,setErr]=useState(false);const[pr,setPr]=useState(null);const[checking,setChecking]=useState(false);
-  const go=async p=>{const v=p||pin;if(checking)return;setChecking(true);try{const r=await fetch(`${API}?a=login&pin=${encodeURIComponent(v)}`);const d=await r.json();if(d.data){onLogin(d.data.role,d.data.role==="admin"?null:d.data.agent?.id);}else{setErr(true);setPin("");}}catch{setErr(true);setPin("");}setChecking(false);};
+  const go=async p=>{const v=p||pin;if(checking)return;setChecking(true);try{const r=await fetch(`${API}?a=login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:v})});const d=await r.json();if(d.data&&d.data.token){setAuthToken(d.data.token);onLogin(d.data.role,d.data.role==="admin"?null:d.data.agent?.id);}else{setErr(true);setPin("");}}catch{setErr(true);setPin("");}setChecking(false);};
   const tap=n=>{setPr(n);setErr(false);setTimeout(()=>setPr(null),100);const nx=pin+n;setPin(nx);if(nx.length===4)setTimeout(()=>go(nx),120);};
   return(<div style={{minHeight:"100dvh",background:"#050507",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
     <div style={{position:"absolute",top:"-30%",left:"50%",transform:"translateX(-50%)",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,168,76,.06) 0%,transparent 70%)"}}/>
@@ -113,16 +118,21 @@ function App(){
   const[chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hey! I'm Legacy AI — your insurance sales assistant. Ask me about scripts, objection handling, products, or anything to help you close more deals."}]);const[chatInput,setChatInput]=useState("");const[chatLoading,setChatLoading]=useState(false);
   const[showManageTeam,setShowManageTeam]=useState(false);
 
-  const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
+  const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
 
   useEffect(()=>{const el=document.getElementById("chat-scroll");if(el)el.scrollTop=el.scrollHeight;},[chatMsgs,chatLoading]);
 
   const td=todayK();const isAdmin=role==="admin";const AGENTS=agents;const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
 
-  useEffect(()=>{fetch(`${API}?a=init`).then(()=>fetch(`${API}?a=agents-list`)).then(r=>r.json()).then(d=>{if(d.data&&d.data.length)setAgents(d.data);}).catch(()=>{});},[]);
+  useEffect(()=>{fetch(`${API}?a=init`).catch(()=>{});},[]);
+
+  // Auto-logout on expired session
+  useEffect(()=>{window.__handleAuthExpired=()=>{setAuthToken(null);setRole(null);setMe(null);setData(null);};return()=>{window.__handleAuthExpired=null;};},[]);
 
   const refresh=useCallback(async()=>{
+    // Load agents list (authenticated)
+    const agData=await get("a=agents-list");if(agData&&agData.length)setAgents(agData);
     const leadsQ=me&&me!=="admin"?`a=leads-list&status=new&agent=${me}&date=${td}`:"a=leads-list&status=new";
     const[nl,ml,ls]=await Promise.all([get(leadsQ),me?get(`a=leads-my&agent=${me}`):null,get("a=leads-stats")]);
     setLeads(nl||[]);if(ml)setMyLeads(ml);setLstats(ls||{});
@@ -164,7 +174,7 @@ function App(){
   const handleCrmDelete=async id=>{await post("crm-delete",{id,agent_id:me});showToast("Lead removed");refresh();};
   const handleImportCrm=async list=>{const r=await post("crm-import",{agent_id:me,leads:list});if(r.error){showToast(r.error);}else{showToast(`${r.count||list.length} leads imported!`);refresh();}};
 
-  const refreshAgents=async()=>{const r=await fetch(`${API}?a=agents-list`);const d=await r.json();if(d.data&&d.data.length)setAgents(d.data);};
+  const refreshAgents=async()=>{const r=await fetch(`${API}?a=agents-list`,{headers:authHeaders()});const d=await r.json();if(d.data&&d.data.length)setAgents(d.data);};
   const handleAddAgent=async(agentData)=>{const r=await post("agents-add",agentData);if(r.error){showToast(r.error);return false;}showToast(`${agentData.name} added to team!`);refreshAgents();return true;};
   const handleDeleteAgent=async(id)=>{const ag=agents.find(a=>a.id===id);await post("agents-delete",{id});showToast(`${ag?.name||id} removed from team`);refreshAgents();};
 
@@ -177,7 +187,7 @@ function App(){
 
   return(<div style={{minHeight:"100dvh",background:"#050507",fontFamily:"'Outfit',sans-serif",color:"#E2E4EA",display:"flex",flexDirection:"column"}}>
     {/* HEADER */}
-    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"#2D3040",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><button onClick={()=>{setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});setCrmLeads([]);setCrmStats({});setCrmFilter("all");setCrmEdit(null);}} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#2D3040",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div>
+    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"#2D3040",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><button onClick={()=>{post("logout",{});setAuthToken(null);setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});setCrmLeads([]);setCrmStats({});setCrmFilter("all");setCrmEdit(null);}} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",color:"#2D3040",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div>
 
     {/* ═══ KPI PAGE ═══ */}
     {page==="kpi"&&<div style={{flex:1,padding:"12px 16px",overflowY:"auto",paddingBottom:90}}>
@@ -524,7 +534,6 @@ function ManageTeamModal({agents,onAdd,onDelete,onClose}){
   const doAdd=async()=>{
     if(!name.trim()){setErr("Name is required");return;}
     if(!pin||pin.length!==4||!/^\d{4}$/.test(pin)){setErr("PIN must be exactly 4 digits");return;}
-    if(pin==="9999"){setErr("This PIN is reserved");return;}
     if(agents.find(a=>a.id===genId(name))){setErr("An agent with this name already exists");return;}
     const id=genId(name);
     if(!id){setErr("Invalid name");return;}

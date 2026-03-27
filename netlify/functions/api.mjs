@@ -2,7 +2,10 @@ import { neon } from "@netlify/neon";
 
 export default async (req) => {
   const sql = neon();
-  const H = {"Content-Type":"application/json","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"};
+  const origin = req.headers.get("origin") || "";
+  const siteHost = new URL(req.url).origin;
+  const allowedOrigin = origin === siteHost ? origin : siteHost;
+  const H = {"Content-Type":"application/json","Access-Control-Allow-Origin":allowedOrigin,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"};
   if (req.method === "OPTIONS") return new Response("ok", { headers: H });
 
   try {
@@ -121,9 +124,20 @@ export default async (req) => {
     if (a === "crm-list") { const agent = url.searchParams.get("agent"); if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H }); const status = url.searchParams.get("status"); const rows = status && status !== "all" ? await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} AND status = ${status} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC` : await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
     if (a === "crm-stats") { const agent = url.searchParams.get("agent"); if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H }); const rows = await sql`SELECT status, COUNT(*)::int as count FROM crm_leads WHERE agent_id = ${agent} GROUP BY status`; const stats = {}; for (const r of rows) stats[r.status] = r.count; return new Response(JSON.stringify({ data: stats }), { headers: H }); }
 
+    // ── AUTH ──
+    if (a === "login") {
+      const pin = url.searchParams.get("pin");
+      if (!pin || !/^\d{4}$/.test(pin)) return new Response(JSON.stringify({ error: "Invalid PIN" }), { status: 400, headers: H });
+      const ADMIN_PIN = process.env.ADMIN_PIN || "9999";
+      if (pin === ADMIN_PIN) return new Response(JSON.stringify({ data: { role: "admin", agent: null } }), { headers: H });
+      const rows = await sql`SELECT id, name, color, goal FROM agents WHERE pin = ${pin} AND active = TRUE LIMIT 1`;
+      if (rows.length === 0) return new Response(JSON.stringify({ error: "Invalid PIN" }), { status: 401, headers: H });
+      return new Response(JSON.stringify({ data: { role: "agent", agent: rows[0] } }), { headers: H });
+    }
+
     // ── AGENTS READ ──
     if (a === "agents-list") {
-      const rows = await sql`SELECT id, name, pin, color, goal, active FROM agents WHERE active = TRUE ORDER BY created_at`;
+      const rows = await sql`SELECT id, name, color, goal, active FROM agents WHERE active = TRUE ORDER BY created_at`;
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
 
@@ -133,11 +147,24 @@ export default async (req) => {
 
     // ── POST ──
     if (req.method === "POST") {
-      const body = await req.json();
+      // Limit request body size (reject huge payloads)
+      const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
+      if (contentLength > 102400) return new Response(JSON.stringify({ error: "Request too large" }), { status: 413, headers: H });
+
+      let body;
+      try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
+      if (!body || typeof body !== "object") return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400, headers: H });
+
+      // Helper to sanitize string inputs — strip tags and limit length
+      const clean = (val, maxLen = 500) => {
+        if (val === null || val === undefined) return '';
+        const s = String(val).slice(0, maxLen);
+        return s.replace(/<[^>]*>/g, '');
+      };
 
       if (a === "leads-add") {
-        const { name, source, post_text, intent, ai_draft, phone, email, location, company, profile_url } = body;
-        const rows = await sql`INSERT INTO leads (name,source,post_text,intent,ai_draft,phone,email,location,company,profile_url) VALUES (${name||''},${source||''},${post_text||''},${intent||'medium'},${ai_draft||''},${phone||''},${email||''},${location||''},${company||''},${profile_url||''}) RETURNING *`;
+        const name = clean(body.name, 200), source = clean(body.source, 200), post_text = clean(body.post_text, 2000), intent = ['high','medium','low'].includes(body.intent) ? body.intent : 'medium', ai_draft = clean(body.ai_draft, 2000), phone = clean(body.phone, 50), email = clean(body.email, 200), location = clean(body.location, 300), company = clean(body.company, 300), profile_url = clean(body.profile_url, 500);
+        const rows = await sql`INSERT INTO leads (name,source,post_text,intent,ai_draft,phone,email,location,company,profile_url) VALUES (${name},${source},${post_text},${intent},${ai_draft},${phone},${email},${location},${company},${profile_url}) RETURNING *`;
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
 
@@ -248,10 +275,14 @@ export default async (req) => {
 
       // ── AGENTS WRITE ──
       if (a === "agents-add") {
-        const { id, name, pin, color } = body;
+        const id = clean(body.id, 30).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        const name = clean(body.name, 100);
+        const pin = String(body.pin || '');
+        const color = clean(body.color, 20);
         if (!id || !name || !pin) return new Response(JSON.stringify({ error: "id, name, and pin are required" }), { status: 400, headers: H });
         if (pin.length !== 4 || !/^\d{4}$/.test(pin)) return new Response(JSON.stringify({ error: "PIN must be exactly 4 digits" }), { status: 400, headers: H });
-        if (pin === "9999") return new Response(JSON.stringify({ error: "PIN 9999 is reserved for admin" }), { status: 400, headers: H });
+        const ADMIN_PIN = process.env.ADMIN_PIN || "9999";
+        if (pin === ADMIN_PIN) return new Response(JSON.stringify({ error: "This PIN is reserved" }), { status: 400, headers: H });
         // Check for duplicate PIN
         const existing = await sql`SELECT id FROM agents WHERE pin = ${pin} AND active = TRUE`;
         if (existing.length > 0) return new Response(JSON.stringify({ error: "This PIN is already in use by another agent" }), { status: 409, headers: H });
@@ -263,7 +294,7 @@ export default async (req) => {
         } else {
           await sql`INSERT INTO agents (id,name,pin,color) VALUES (${id},${name},${pin},${color||'#5B8BD4'})`;
         }
-        const rows = await sql`SELECT id, name, pin, color, goal, active FROM agents WHERE id = ${id}`;
+        const rows = await sql`SELECT id, name, color, goal, active FROM agents WHERE id = ${id}`;
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
       if (a === "agents-delete") {
@@ -275,7 +306,7 @@ export default async (req) => {
     }
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: H });
-  } catch (e) { console.error("API Error:", e); return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: H }); }
+  } catch (e) { console.error("API Error:", e); return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: H }); }
 };
 
 export const config = { path: "/.netlify/functions/api" };

@@ -1,12 +1,9 @@
 import { neon } from "@netlify/neon";
 import Anthropic from "@anthropic-ai/sdk";
 
-// ═══════════════════════════════════════════════
-//  PASTE YOUR TOKENS HERE AFTER SETUP
-// ═══════════════════════════════════════════════
-const PAGE_ACCESS_TOKEN = "PASTE_YOUR_PAGE_ACCESS_TOKEN_HERE";
-const VERIFY_TOKEN = "landoflegacy2025";
-// ═══════════════════════════════════════════════
+// Tokens must be set as environment variables in Netlify dashboard
+const PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || "";
+const VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || "";
 
 const MESSENGER_API = "https://graph.facebook.com/v21.0/me/messages";
 const anthropic = new Anthropic();
@@ -163,6 +160,10 @@ export default async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
+    if (!VERIFY_TOKEN) {
+      console.error("FB_VERIFY_TOKEN not configured");
+      return new Response("Server misconfigured", { status: 500 });
+    }
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
       console.log("Webhook verified!");
       return new Response(challenge, { status: 200 });
@@ -172,6 +173,10 @@ export default async (req) => {
 
   // ── POST: Incoming messages ──
   if (req.method === "POST") {
+    if (!PAGE_ACCESS_TOKEN) {
+      console.error("FB_PAGE_ACCESS_TOKEN not configured");
+      return new Response("Server misconfigured", { status: 500 });
+    }
     try {
       const body = await req.json();
 

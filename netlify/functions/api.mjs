@@ -32,10 +32,9 @@ async function validateSession(sql, req) {
 
 // ── RATE LIMITING ──
 async function checkRateLimit(sql, ip) {
-  // Clean old entries
   await sql`DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '15 minutes'`;
   const rows = await sql`SELECT COUNT(*)::int as cnt FROM login_attempts WHERE ip_address = ${ip} AND attempted_at > NOW() - INTERVAL '15 minutes'`;
-  return (rows[0]?.cnt || 0) < 10; // Max 10 attempts per 15 minutes
+  return (rows[0]?.cnt || 0) < 10;
 }
 
 async function recordLoginAttempt(sql, ip) {
@@ -65,12 +64,10 @@ export default async (req) => {
       await sql`CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, token TEXT UNIQUE NOT NULL, agent_id TEXT, role TEXT NOT NULL DEFAULT 'agent', created_at TIMESTAMPTZ DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)`;
       await sql`CREATE TABLE IF NOT EXISTS login_attempts (id SERIAL PRIMARY KEY, ip_address TEXT NOT NULL, attempted_at TIMESTAMPTZ DEFAULT NOW())`;
 
-      // Migrate: if agents table has 'pin' column but not 'pin_hash', migrate
       try {
         const colCheck = await sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'agents' AND column_name = 'pin' AND data_type = 'text'`;
         const hashColCheck = await sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'agents' AND column_name = 'pin_hash'`;
         if (colCheck.length > 0 && hashColCheck.length === 0) {
-          // Old schema — add hash columns and migrate PINs
           await sql`ALTER TABLE agents ADD COLUMN pin_hash TEXT DEFAULT ''`;
           await sql`ALTER TABLE agents ADD COLUMN pin_salt TEXT DEFAULT ''`;
           const oldAgents = await sql`SELECT id, pin FROM agents`;
@@ -81,7 +78,6 @@ export default async (req) => {
           }
           await sql`ALTER TABLE agents DROP COLUMN pin`;
         } else if (colCheck.length > 0 && hashColCheck.length > 0) {
-          // Both columns exist — migrate any unhashed PINs
           const unhashed = await sql`SELECT id, pin FROM agents WHERE (pin_hash = '' OR pin_hash IS NULL) AND pin IS NOT NULL AND pin != ''`;
           for (const ag of unhashed) {
             const salt = generateSalt();
@@ -92,7 +88,6 @@ export default async (req) => {
         }
       } catch {}
 
-      // Seed default agents if table is empty (with hashed PINs)
       const agentCount = await sql`SELECT COUNT(*)::int as cnt FROM agents`;
       if (agentCount[0].cnt === 0) {
         const defaults = [
@@ -110,15 +105,12 @@ export default async (req) => {
         }
       }
 
-      // Add missing columns to existing leads table
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
       await sql`DO $$ BEGIN ALTER TABLE leads ADD COLUMN IF NOT EXISTS company TEXT DEFAULT ''; EXCEPTION WHEN OTHERS THEN NULL; END $$`;
 
-      // Cleanup expired sessions
       await sql`DELETE FROM sessions WHERE expires_at < NOW()`;
-      // Cleanup old login attempts
       await sql`DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '1 hour'`;
 
       return new Response(JSON.stringify({ ok: true }), { headers: H });
@@ -147,7 +139,6 @@ export default async (req) => {
         return new Response(JSON.stringify({ data: { role: "admin", agent: null, token } }), { headers: H });
       }
 
-      // Check agent PINs (hashed comparison)
       const allAgents = await sql`SELECT id, name, color, goal, pin_hash, pin_salt FROM agents WHERE active = TRUE`;
       let matchedAgent = null;
       for (const ag of allAgents) {
@@ -170,7 +161,7 @@ export default async (req) => {
     if (!session) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: H });
 
     const isAdmin = session.role === "admin";
-    const sessionAgent = session.agentId; // null for admin
+    const sessionAgent = session.agentId;
 
     // ── LOGOUT ──
     if (a === "logout") {
@@ -191,7 +182,6 @@ export default async (req) => {
       const s = url.searchParams.get("status") || "new";
       const rows = s === "all" ? await sql`SELECT * FROM leads ORDER BY created_at DESC` : await sql`SELECT * FROM leads WHERE status = ${s} ORDER BY created_at DESC`;
 
-      // If a non-admin agent is requesting, check their dials — hide phone/email if under 600
       if (!isAdmin && sessionAgent) {
         const today = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
         const kpiRows = await sql`SELECT dials FROM kpis WHERE agent_id = ${sessionAgent} AND date_key = ${today}`;
@@ -206,13 +196,19 @@ export default async (req) => {
 
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
+
     if (a === "leads-my") {
       const agent = isAdmin ? url.searchParams.get("agent") : sessionAgent;
       if (!agent) return new Response(JSON.stringify({ data: [] }), { headers: H });
       const rows = await sql`SELECT * FROM leads WHERE grabbed_by = ${agent} AND status NOT IN ('discarded','new') ORDER BY CASE status WHEN 'booked' THEN 1 WHEN 'contacted' THEN 2 WHEN 'grabbed' THEN 3 WHEN 'closed' THEN 4 END, created_at DESC`;
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
-    if (a === "leads-stats") { const rows = await sql`SELECT status, COUNT(*)::int as count FROM leads GROUP BY status`; const stats = {}; for (const r of rows) stats[r.status] = r.count; return new Response(JSON.stringify({ data: stats }), { headers: H }); }
+
+    if (a === "leads-stats") {
+      const rows = await sql`SELECT status, COUNT(*)::int as count FROM leads GROUP BY status`;
+      const stats = {}; for (const r of rows) stats[r.status] = r.count;
+      return new Response(JSON.stringify({ data: stats }), { headers: H });
+    }
 
     // ── LEAD LOCK CHECK ──
     if (a === "leads-lock-check") {
@@ -243,16 +239,23 @@ export default async (req) => {
       const rows = await sql`SELECT * FROM kpis WHERE agent_id = ${agent} AND date_key = ${url.searchParams.get("date")}`;
       return new Response(JSON.stringify({ data: rows[0] || null }), { headers: H });
     }
-    if (a === "kpi-team") { const rows = await sql`SELECT * FROM kpis WHERE date_key = ${url.searchParams.get("date")} ORDER BY dials DESC`; return new Response(JSON.stringify({ data: rows }), { headers: H }); }
 
-    // ── CRM READ (agents can only see their own) ──
+    if (a === "kpi-team") {
+      const rows = await sql`SELECT * FROM kpis WHERE date_key = ${url.searchParams.get("date")} ORDER BY dials DESC`;
+      return new Response(JSON.stringify({ data: rows }), { headers: H });
+    }
+
+    // ── CRM READ ──
     if (a === "crm-list") {
       const agent = isAdmin ? url.searchParams.get("agent") : sessionAgent;
       if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
       const status = url.searchParams.get("status");
-      const rows = status && status !== "all" ? await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} AND status = ${status} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC` : await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC`;
+      const rows = status && status !== "all"
+        ? await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} AND status = ${status} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC`
+        : await sql`SELECT * FROM crm_leads WHERE agent_id = ${agent} ORDER BY CASE status WHEN 'follow_up' THEN 1 WHEN 'appointment' THEN 2 WHEN 'contacted' THEN 3 WHEN 'new' THEN 4 WHEN 'quoted' THEN 5 WHEN 'closed' THEN 6 WHEN 'lost' THEN 7 END, updated_at DESC`;
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
+
     if (a === "crm-stats") {
       const agent = isAdmin ? url.searchParams.get("agent") : sessionAgent;
       if (!agent) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
@@ -264,12 +267,17 @@ export default async (req) => {
     // ── RECRUITS READ ──
     if (a === "recruits-list") {
       const agent = isAdmin ? (url.searchParams.get("agent") || null) : sessionAgent;
-      const rows = agent ? await sql`SELECT * FROM recruits WHERE agent_id = ${agent} ORDER BY CASE stage WHEN 'interviewed' THEN 1 WHEN 'contacted' THEN 2 WHEN 'prospect' THEN 3 WHEN 'licensed' THEN 4 WHEN 'dropped' THEN 5 END, created_at DESC` : await sql`SELECT * FROM recruits ORDER BY created_at DESC`;
+      const rows = agent
+        ? await sql`SELECT * FROM recruits WHERE agent_id = ${agent} ORDER BY CASE stage WHEN 'interviewed' THEN 1 WHEN 'contacted' THEN 2 WHEN 'prospect' THEN 3 WHEN 'licensed' THEN 4 WHEN 'dropped' THEN 5 END, created_at DESC`
+        : await sql`SELECT * FROM recruits ORDER BY created_at DESC`;
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
+
     if (a === "recruits-stats") {
       const agent = isAdmin ? (url.searchParams.get("agent") || null) : sessionAgent;
-      const rows = agent ? await sql`SELECT stage, COUNT(*)::int as count FROM recruits WHERE agent_id = ${agent} GROUP BY stage` : await sql`SELECT stage, COUNT(*)::int as count FROM recruits GROUP BY stage`;
+      const rows = agent
+        ? await sql`SELECT stage, COUNT(*)::int as count FROM recruits WHERE agent_id = ${agent} GROUP BY stage`
+        : await sql`SELECT stage, COUNT(*)::int as count FROM recruits GROUP BY stage`;
       const stats = {}; for (const r of rows) stats[r.stage] = r.count;
       return new Response(JSON.stringify({ data: stats }), { headers: H });
     }
@@ -297,7 +305,6 @@ export default async (req) => {
       }
 
       if (a === "leads-grab") {
-        // Use session identity — not request body — to determine who is grabbing
         const agent = isAdmin ? (body.agent || "admin") : sessionAgent;
         const today = body.date || new Date().toISOString().slice(0, 10);
 
@@ -329,10 +336,27 @@ export default async (req) => {
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
 
-      if (a === "leads-update") { const { id, status, notes, appointment_time } = body; await sql`UPDATE leads SET status=COALESCE(${status||null},status), notes=COALESCE(${notes||null},notes), appointment_time=COALESCE(${appointment_time||null},appointment_time) WHERE id=${id}`; return new Response(JSON.stringify({ ok: true }), { headers: H }); }
-      if (a === "leads-release") { await sql`UPDATE leads SET status='new',grabbed_by='',grabbed_at=NULL WHERE id=${body.id}`; return new Response(JSON.stringify({ ok: true }), { headers: H }); }
+      // ── FIX: leads-update — agents can only update their own grabbed leads ──
+      if (a === "leads-update") {
+        const { id, status, notes, appointment_time } = body;
+        if (!isAdmin) {
+          const owner = await sql`SELECT grabbed_by FROM leads WHERE id=${id}`;
+          if (!owner.length || owner[0].grabbed_by !== sessionAgent) {
+            return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: H });
+          }
+        }
+        await sql`UPDATE leads SET status=COALESCE(${status||null},status), notes=COALESCE(${notes||null},notes), appointment_time=COALESCE(${appointment_time||null},appointment_time) WHERE id=${id}`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
 
-      // ── CRM WRITE (enforce agent ownership from session) ──
+      // ── FIX: leads-release — admin only ──
+      if (a === "leads-release") {
+        if (!isAdmin) return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: H });
+        await sql`UPDATE leads SET status='new',grabbed_by='',grabbed_at=NULL WHERE id=${body.id}`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
+
+      // ── CRM WRITE ──
       if (a === "crm-add") {
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         if (!agent_id) return new Response(JSON.stringify({ error: "agent_id required" }), { status: 400, headers: H });
@@ -340,6 +364,7 @@ export default async (req) => {
         const rows = await sql`INSERT INTO crm_leads (agent_id,name,phone,email,company,location,source,notes,next_follow_up) VALUES (${agent_id},${name||''},${phone||''},${email||''},${company||''},${location||''},${source||''},${notes||''},${next_follow_up||''}) RETURNING *`;
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
+
       if (a === "crm-update") {
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         if (!agent_id) return new Response(JSON.stringify({ error: "agent_id required" }), { status: 400, headers: H });
@@ -348,12 +373,14 @@ export default async (req) => {
         if (status === 'contacted' || status === 'follow_up') { await sql`UPDATE crm_leads SET last_contacted=NOW() WHERE id=${id} AND agent_id=${agent_id}`; }
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }
+
       if (a === "crm-delete") {
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         if (!agent_id) return new Response(JSON.stringify({ error: "agent_id required" }), { status: 400, headers: H });
         await sql`DELETE FROM crm_leads WHERE id=${body.id} AND agent_id=${agent_id}`;
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }
+
       if (a === "crm-import") {
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         if (!agent_id) return new Response(JSON.stringify({ error: "agent_id required" }), { status: 400, headers: H });
@@ -371,12 +398,28 @@ export default async (req) => {
         const rows = await sql`INSERT INTO recruits (agent_id,name,phone,email,location,source,notes) VALUES (${agent_id||''},${name||''},${phone||''},${email||''},${location||''},${source||''},${notes||''}) RETURNING *`;
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
+
+      // ── FIX: recruits-update — agents can only update their own recruits ──
       if (a === "recruits-update") {
         const { id, name, phone, email, location, source, notes, stage, licensed } = body;
-        await sql`UPDATE recruits SET name=COALESCE(${name||null},name), phone=COALESCE(${phone||null},phone), email=COALESCE(${email||null},email), location=COALESCE(${location||null},location), source=COALESCE(${source||null},source), notes=COALESCE(${notes||null},notes), stage=COALESCE(${stage||null},stage), licensed=COALESCE(${typeof licensed==='boolean'?licensed:null},licensed), updated_at=NOW() WHERE id=${id}`;
+        if (isAdmin) {
+          await sql`UPDATE recruits SET name=COALESCE(${name||null},name), phone=COALESCE(${phone||null},phone), email=COALESCE(${email||null},email), location=COALESCE(${location||null},location), source=COALESCE(${source||null},source), notes=COALESCE(${notes||null},notes), stage=COALESCE(${stage||null},stage), licensed=COALESCE(${typeof licensed==='boolean'?licensed:null},licensed), updated_at=NOW() WHERE id=${id}`;
+        } else {
+          await sql`UPDATE recruits SET name=COALESCE(${name||null},name), phone=COALESCE(${phone||null},phone), email=COALESCE(${email||null},email), location=COALESCE(${location||null},location), source=COALESCE(${source||null},source), notes=COALESCE(${notes||null},notes), stage=COALESCE(${stage||null},stage), licensed=COALESCE(${typeof licensed==='boolean'?licensed:null},licensed), updated_at=NOW() WHERE id=${id} AND agent_id=${sessionAgent}`;
+        }
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }
-      if (a === "recruits-delete") { await sql`DELETE FROM recruits WHERE id=${body.id}`; return new Response(JSON.stringify({ ok: true }), { headers: H }); }
+
+      // ── FIX: recruits-delete — agents can only delete their own recruits ──
+      if (a === "recruits-delete") {
+        if (isAdmin) {
+          await sql`DELETE FROM recruits WHERE id=${body.id}`;
+        } else {
+          await sql`DELETE FROM recruits WHERE id=${body.id} AND agent_id=${sessionAgent}`;
+        }
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
+
       if (a === "recruits-import") {
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         const inserted = [];
@@ -387,16 +430,25 @@ export default async (req) => {
         return new Response(JSON.stringify({ data: inserted, count: inserted.length }), { headers: H });
       }
 
-      if (a === "sales-get") { const rows = await sql`SELECT data FROM daily_sales WHERE date_key=${body.date}`; return new Response(JSON.stringify({ data: rows.length ? rows[0].data : null }), { headers: H }); }
-      if (a === "sales-all") { const rows = await sql`SELECT date_key,data FROM daily_sales ORDER BY date_key`; const out = {}; for (const r of rows) out[r.date_key] = r.data; return new Response(JSON.stringify({ data: out }), { headers: H }); }
+      if (a === "sales-get") {
+        const rows = await sql`SELECT data FROM daily_sales WHERE date_key=${body.date}`;
+        return new Response(JSON.stringify({ data: rows.length ? rows[0].data : null }), { headers: H });
+      }
+
+      if (a === "sales-all") {
+        const rows = await sql`SELECT date_key,data FROM daily_sales ORDER BY date_key`;
+        const out = {}; for (const r of rows) out[r.date_key] = r.data;
+        return new Response(JSON.stringify({ data: out }), { headers: H });
+      }
+
       if (a === "sales-save") {
         if (!isAdmin) return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: H });
-        const j = JSON.stringify(body.data); await sql`INSERT INTO daily_sales (date_key,data,updated_at) VALUES (${body.date},${j}::jsonb,NOW()) ON CONFLICT (date_key) DO UPDATE SET data=${j}::jsonb,updated_at=NOW()`;
+        const j = JSON.stringify(body.data);
+        await sql`INSERT INTO daily_sales (date_key,data,updated_at) VALUES (${body.date},${j}::jsonb,NOW()) ON CONFLICT (date_key) DO UPDATE SET data=${j}::jsonb,updated_at=NOW()`;
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }
 
       if (a === "kpi-save") {
-        // Agents can only save their own KPIs
         const agent_id = isAdmin ? (body.agent_id || sessionAgent) : sessionAgent;
         if (!agent_id) return new Response(JSON.stringify({ error: "agent_id required" }), { status: 400, headers: H });
         const { date_key, dials, contacts, appointments, quotes, apps_submitted } = body;
@@ -414,11 +466,9 @@ export default async (req) => {
         if (!id || !name || !pin) return new Response(JSON.stringify({ error: "id, name, and pin are required" }), { status: 400, headers: H });
         if (pin.length !== 4 || !/^\d{4}$/.test(pin)) return new Response(JSON.stringify({ error: "PIN must be exactly 4 digits" }), { status: 400, headers: H });
 
-        // Check reserved PIN
         const ADMIN_PIN = process.env.ADMIN_PIN;
         if (ADMIN_PIN && pin === ADMIN_PIN) return new Response(JSON.stringify({ error: "This PIN is reserved" }), { status: 400, headers: H });
 
-        // Check for duplicate PIN by hashing against all existing agents
         const allAgents = await sql`SELECT id, pin_hash, pin_salt FROM agents WHERE active = TRUE`;
         for (const ag of allAgents) {
           if (!ag.pin_hash || !ag.pin_salt) continue;
@@ -438,12 +488,12 @@ export default async (req) => {
         const rows = await sql`SELECT id, name, color, goal, active FROM agents WHERE id = ${id}`;
         return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
       }
+
       if (a === "agents-delete") {
         if (!isAdmin) return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: H });
         const { id } = body;
         if (!id) return new Response(JSON.stringify({ error: "id required" }), { status: 400, headers: H });
         await sql`UPDATE agents SET active = FALSE WHERE id = ${id}`;
-        // Invalidate sessions for the deleted agent
         await sql`DELETE FROM sessions WHERE agent_id = ${id}`;
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }

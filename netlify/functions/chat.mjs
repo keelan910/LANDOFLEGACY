@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { neon } from "@netlify/neon";
 
 const anthropic = new Anthropic();
 
@@ -21,12 +22,28 @@ export default async (req) => {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
   };
   if (req.method === "OPTIONS") return new Response("ok", { headers: H });
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: H });
+  }
+
+  // Require valid session token
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token || token.length < 32) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: H });
+  }
+  try {
+    const sql = neon();
+    const sessions = await sql`SELECT agent_id FROM sessions WHERE token = ${token} AND expires_at > NOW()`;
+    if (sessions.length === 0) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: H });
+    }
+  } catch {
+    return new Response(JSON.stringify({ error: "Auth service unavailable" }), { status: 500, headers: H });
   }
 
   try {

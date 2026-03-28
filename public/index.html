@@ -120,12 +120,28 @@ function App(){
   const[chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hey! I'm Legacy AI — your insurance sales assistant. Ask me about scripts, objection handling, products, or anything to help you close more deals."}]);const[chatInput,setChatInput]=useState("");const[chatLoading,setChatLoading]=useState(false);
   const[showManageTeam,setShowManageTeam]=useState(false);
   const[darkMode,setDarkMode]=useState(true);
+  // Chat Rooms state
+  const[chatRooms,setChatRooms]=useState([]);const[activeRoom,setActiveRoom]=useState(null);const[roomMsgs,setRoomMsgs]=useState([]);const[roomInput,setRoomInput]=useState("");const[chatView,setChatView]=useState("list");const[showNewChat,setShowNewChat]=useState(false);const[showNewGroup,setShowNewGroup]=useState(false);const[showAddMember,setShowAddMember]=useState(false);
   const toggleTheme=()=>{setDarkMode(d=>{const next=!d;document.documentElement.classList.toggle("light",!next);return next;});};
 
 
   const sendChat=async()=>{if(!chatInput.trim()||chatLoading)return;const msg=chatInput.trim();setChatInput("");const newMsgs=[...chatMsgs,{role:"user",content:msg}];setChatMsgs(newMsgs);setChatLoading(true);try{const r=await fetch(CHAT_API,{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({message:msg,history:newMsgs.slice(-20)})});const d=await r.json();if(d.reply)setChatMsgs(m=>[...m,{role:"assistant",content:d.reply}]);else setChatMsgs(m=>[...m,{role:"assistant",content:"Sorry, I couldn't process that. Try again!"}]);}catch{setChatMsgs(m=>[...m,{role:"assistant",content:"Connection error. Please try again."}]);}setChatLoading(false);};
 
   useEffect(()=>{const el=document.getElementById("chat-scroll");if(el)el.scrollTop=el.scrollHeight;},[chatMsgs,chatLoading]);
+
+  // ═══ CHAT ROOMS FUNCTIONS ═══
+  const loadChatRooms=async()=>{const d=await get(`a=chat-rooms-list${me?"&agent="+me:""}`);if(d)setChatRooms(d);};
+  const openRoom=async(room)=>{setActiveRoom(room);setChatView("room");const d=await get(`a=chat-rooms-messages&room=${room.id}${me?"&agent="+me:""}`);setRoomMsgs(d||[]);};
+  const sendRoomMsg=async()=>{if(!roomInput.trim()||!activeRoom)return;const msg=roomInput.trim();setRoomInput("");const r=await post("chat-rooms-send",{room_id:activeRoom.id,content:msg,agent_id:me||"admin"});if(r.data){setRoomMsgs(m=>[...m,r.data]);}};
+  const createPrivateChat=async(otherId)=>{const r=await post("chat-rooms-create",{type:"private",members:[otherId],agent_id:me||"admin"});if(r.data){setShowNewChat(false);loadChatRooms();const room=r.data;openRoom({id:room.id||room.existing,type:"private",members:[]});}};
+  const createGroupChat=async(name,memberIds)=>{const r=await post("chat-rooms-create",{type:"group",name,members:memberIds,agent_id:me||"admin"});if(r.data){setShowNewGroup(false);loadChatRooms();openRoom({id:r.data.id,name:r.data.name,type:"group",members:[]});}};
+  const addMemberToRoom=async(newMemberId)=>{if(!activeRoom)return;const r=await post("chat-rooms-add-member",{room_id:activeRoom.id,new_member_id:newMemberId,agent_id:me||"admin"});if(r.ok){showToast("Member added!");setShowAddMember(false);loadChatRooms();const d=await get(`a=chat-rooms-messages&room=${activeRoom.id}${me?"&agent="+me:""}`);setRoomMsgs(d||[]);}else{showToast(r.error||"Failed to add");}};
+  const leaveRoom=async(roomId)=>{const r=await post("chat-rooms-leave",{room_id:roomId,agent_id:me||"admin"});if(r.ok){showToast("Left group");setActiveRoom(null);setChatView("list");loadChatRooms();}};
+
+  // Refresh chat rooms when on messages page
+  useEffect(()=>{if(page==="messages"&&role)loadChatRooms();},[page,role]);
+  useEffect(()=>{if(page==="messages"&&role){const iv=setInterval(()=>{loadChatRooms();if(activeRoom){get(`a=chat-rooms-messages&room=${activeRoom.id}${me?"&agent="+me:""}`).then(d=>{if(d)setRoomMsgs(d);});}},4000);return()=>clearInterval(iv);}},[page,role,activeRoom]);
+  useEffect(()=>{const el=document.getElementById("room-scroll");if(el)el.scrollTop=el.scrollHeight;},[roomMsgs]);
 
   const td=todayK();const isAdmin=role==="admin";const AGENTS=agents;const myAgent=AGENTS.find(a=>a.id===me);
   const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2200);};
@@ -193,7 +209,7 @@ function App(){
 
   return(<div style={{minHeight:"100dvh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",color:"var(--text)",display:"flex",flexDirection:"column",transition:"background .3s,color .3s"}}>
     {/* HEADER */}
-    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"var(--text-dark)",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><div style={{display:"flex",alignItems:"center",gap:8}}><button onClick={toggleTheme} aria-label="Toggle light/dark mode" style={{position:"relative",width:52,height:28,borderRadius:14,background:darkMode?"rgba(255,255,255,.08)":"rgba(201,168,76,.15)",border:`1px solid ${darkMode?"rgba(255,255,255,.1)":"rgba(201,168,76,.3)"}`,padding:0,cursor:"pointer",transition:"all .3s ease"}}><div style={{position:"absolute",top:3,left:darkMode?3:25,width:20,height:20,borderRadius:10,background:darkMode?"#1A1C24":"#C9A84C",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,transition:"all .3s ease",boxShadow:darkMode?"0 0 6px rgba(255,255,255,.1)":"0 0 8px rgba(201,168,76,.4)"}}>{darkMode?"🌙":"☀️"}</div></button><button onClick={()=>{post("logout",{});setAuthToken(null);setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});setCrmLeads([]);setCrmStats({});setCrmFilter("all");setCrmEdit(null);}} style={{background:"var(--bg-hover)",border:"1px solid var(--border)",color:"var(--text-dark)",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div></div>
+    <div style={{padding:"max(env(safe-area-inset-top),12px) 16px 0"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16,color:"#C9A84C"}}>◈</span><span style={{fontSize:10,fontWeight:900,letterSpacing:5,color:"#C9A84C"}}>LAND OF LEGACY</span></div><div style={{fontSize:12,color:"var(--text-dark)",fontWeight:500,marginTop:2}}>{isAdmin?"Admin":myAgent?.name}</div></div><div style={{display:"flex",alignItems:"center",gap:8}}><button onClick={toggleTheme} aria-label="Toggle light/dark mode" style={{position:"relative",width:52,height:28,borderRadius:14,background:darkMode?"rgba(255,255,255,.08)":"rgba(201,168,76,.15)",border:`1px solid ${darkMode?"rgba(255,255,255,.1)":"rgba(201,168,76,.3)"}`,padding:0,cursor:"pointer",transition:"all .3s ease"}}><div style={{position:"absolute",top:3,left:darkMode?3:25,width:20,height:20,borderRadius:10,background:darkMode?"#1A1C24":"#C9A84C",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,transition:"all .3s ease",boxShadow:darkMode?"0 0 6px rgba(255,255,255,.1)":"0 0 8px rgba(201,168,76,.4)"}}>{darkMode?"🌙":"☀️"}</div></button><button onClick={()=>{post("logout",{});setAuthToken(null);setRole(null);setMe(null);setData(null);setAnim(false);setKpi({dials:0,contacts:0,appointments:0,quotes:0,apps_submitted:0});setCrmLeads([]);setCrmStats({});setCrmFilter("all");setCrmEdit(null);setChatRooms([]);setActiveRoom(null);setRoomMsgs([]);setChatView("list");}} style={{background:"var(--bg-hover)",border:"1px solid var(--border)",color:"var(--text-dark)",fontSize:11,fontWeight:600,padding:"7px 16px",borderRadius:10}}>Log out</button></div></div></div>
 
     {/* ═══ KPI PAGE ═══ */}
     {page==="kpi"&&<div style={{flex:1,padding:"12px 16px",overflowY:"auto",paddingBottom:90}}>
@@ -407,7 +423,90 @@ function App(){
     </div>}
     {page==="crm"&&isAdmin&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}><div style={{textAlign:"center",color:"var(--text-muted)"}}><div style={{fontSize:40,marginBottom:16}}>🔒</div><div style={{fontSize:16,fontWeight:700}}>Agent CRM Only</div><div style={{fontSize:12,marginTop:8,color:"var(--text-darker)"}}>The CRM is private to each agent. Log in with an agent PIN to access.</div></div></div>}
 
-    {/* ═══ CHAT PAGE ═══ */}
+    {/* ═══ MESSAGES PAGE — PRIVATE CHATS & GROUP CHATS ═══ */}
+    {page==="messages"&&chatView==="list"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
+      <div style={{padding:"12px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Messages</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Private & group chats with your team</div></div></div>
+      <div style={{display:"flex",gap:6,padding:"8px 16px"}}>
+        <button onClick={()=>setShowNewChat(true)} style={{flex:1,padding:"10px",borderRadius:12,background:"rgba(201,168,76,.05)",border:"1px dashed rgba(201,168,76,.15)",color:"#C9A84C",fontSize:12,fontWeight:700}}>+ Private Chat</button>
+        <button onClick={()=>setShowNewGroup(true)} style={{flex:1,padding:"10px",borderRadius:12,background:"rgba(91,139,212,.05)",border:"1px dashed rgba(91,139,212,.15)",color:"#5B8BD4",fontSize:12,fontWeight:700}}>+ Group Chat</button>
+      </div>
+      {/* AI Chat quick access */}
+      <div style={{padding:"4px 16px"}}><button onClick={()=>setChatView("ai")} style={{width:"100%",display:"flex",alignItems:"center",gap:12,background:"var(--bg-card)",borderRadius:14,padding:"14px 16px",border:"1px solid var(--border)",textAlign:"left"}}>
+        <div style={{width:42,height:42,borderRadius:12,background:"rgba(201,168,76,.1)",border:"1px solid rgba(201,168,76,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🤖</div>
+        <div style={{flex:1,minWidth:0}}><div style={{fontSize:14,fontWeight:700,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"var(--text-muted)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Your insurance sales assistant</div></div>
+      </button></div>
+      {/* Room list */}
+      <div style={{flex:1,padding:"8px 16px",overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+        {chatRooms.map(room=>{
+          const isGroup=room.type==="group";
+          const otherMembers=(room.members||[]).filter(m=>m.agent_id!==(me||"admin"));
+          const displayName=isGroup?(room.name||"Group Chat"):(otherMembers[0]?.name||"Chat");
+          const displayColor=isGroup?"#5B8BD4":(otherMembers[0]?.color||"#C9A84C");
+          const preview=room.last_message?`${room.last_sender}: ${room.last_message}`.slice(0,60):"No messages yet";
+          const timeStr=room.last_message_at?new Date(room.last_message_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"";
+          return(<button key={room.id} onClick={()=>openRoom(room)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,background:"var(--bg-card)",borderRadius:14,padding:"14px 16px",border:"1px solid var(--border)",textAlign:"left"}}>
+            <div style={{width:42,height:42,borderRadius:12,background:`${displayColor}12`,border:`1.5px solid ${displayColor}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isGroup?16:15,fontWeight:800,color:displayColor,flexShrink:0}}>{isGroup?"👥":displayName[0]}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{displayName}</div>{timeStr&&<div style={{fontSize:9,color:"var(--text-darker)",fontFamily:"'IBM Plex Mono',monospace"}}>{timeStr}</div>}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{preview}</div>
+              {isGroup&&<div style={{fontSize:9,color:"var(--text-darker)",marginTop:2}}>{(room.members||[]).length} members</div>}
+            </div>
+          </button>);
+        })}
+        {!chatRooms.length&&<div style={{textAlign:"center",padding:40,color:"var(--text-ghost)",fontSize:14}}>No conversations yet — start a chat!</div>}
+      </div>
+    </div>}
+
+    {/* ═══ MESSAGES — ROOM VIEW ═══ */}
+    {page==="messages"&&chatView==="room"&&activeRoom&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
+      <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid var(--border-light)"}}>
+        <button onClick={()=>{setChatView("list");setActiveRoom(null);}} style={{background:"var(--bg-hover)",border:"1px solid var(--border)",borderRadius:10,padding:"6px 10px",color:"var(--text-dim)",fontSize:12,fontWeight:700}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{activeRoom.type==="group"?(activeRoom.name||"Group Chat"):((activeRoom.members||[]).filter(m=>m.agent_id!==(me||"admin"))[0]?.name||"Chat")}</div>
+          <div style={{fontSize:10,color:"var(--text-muted)"}}>
+            {activeRoom.type==="group"?`${(activeRoom.members||[]).length} members`:"Private chat"}
+          </div>
+        </div>
+        {activeRoom.type==="group"&&<div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setShowAddMember(true)} style={{background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"5px 10px",color:"#4EBF8B",fontSize:10,fontWeight:700}}>+ Add</button>
+          <button onClick={()=>{if(confirm("Leave this group?"))leaveRoom(activeRoom.id);}} style={{background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",borderRadius:8,padding:"5px 10px",color:"#EF4444",fontSize:10,fontWeight:700}}>Leave</button>
+        </div>}
+      </div>
+      <div id="room-scroll" style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
+        {roomMsgs.map((m,i)=>{const isMe=m.sender_id===(me||"admin");const senderAgent=AGENTS.find(a=>a.id===m.sender_id);const sColor=senderAgent?.color||(m.sender_id==="admin"?"#C9A84C":"#5B8BD4");return(
+          <div key={m.id||i} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",animation:"fadeIn .2s ease both"}}>
+            {!isMe&&<div style={{fontSize:9,fontWeight:700,color:sColor,marginBottom:2,marginLeft:4}}>{m.sender_name}</div>}
+            <div style={{maxWidth:"78%",padding:"10px 14px",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isMe?`${sColor}15`:"var(--bar-bg)",border:`1px solid ${isMe?`${sColor}25`:"var(--border-input)"}`,color:isMe?sColor:"var(--text-dim)",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.content}</div>
+            <div style={{fontSize:8,color:"var(--text-darker)",marginTop:1,marginLeft:4,marginRight:4,fontFamily:"'IBM Plex Mono',monospace"}}>{m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):""}</div>
+          </div>);
+        })}
+        {!roomMsgs.length&&<div style={{textAlign:"center",padding:40,color:"var(--text-ghost)",fontSize:13}}>No messages yet — say something!</div>}
+      </div>
+      <div style={{padding:"8px 16px",display:"flex",gap:8}}>
+        <input value={roomInput} onChange={e=>setRoomInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendRoomMsg();}} placeholder="Type a message..." style={{flex:1,background:"var(--bar-bg)",border:"1px solid var(--border-input)",borderRadius:14,padding:"12px 16px",color:"var(--text)",fontSize:14,fontFamily:"'Outfit',sans-serif"}}/>
+        <button onClick={sendRoomMsg} disabled={!roomInput.trim()} style={{padding:"0 18px",borderRadius:14,background:roomInput.trim()?"linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.1))":"var(--bg-hover)",border:`1px solid ${roomInput.trim()?"rgba(201,168,76,.25)":"var(--border)"}`,color:roomInput.trim()?"#C9A84C":"var(--text-dark)",fontSize:14,fontWeight:700,transition:"all .2s"}}>Send</button>
+      </div>
+    </div>}
+
+    {/* ═══ AI CHAT VIEW ═══ */}
+    {page==="messages"&&chatView==="ai"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
+      <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid var(--border-light)"}}>
+        <button onClick={()=>setChatView("list")} style={{background:"var(--bg-hover)",border:"1px solid var(--border)",borderRadius:10,padding:"6px 10px",color:"var(--text-dim)",fontSize:12,fontWeight:700}}>←</button>
+        <div><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Your insurance sales assistant — powered by Claude</div></div>
+      </div>
+      <div id="chat-scroll" style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:10}}>
+        {chatMsgs.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeIn .3s ease both",animationDelay:`${i*.02}s`}}>
+          <div style={{maxWidth:"82%",padding:"10px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?"rgba(201,168,76,.1)":"var(--bar-bg)",border:`1px solid ${m.role==="user"?"rgba(201,168,76,.15)":"var(--border-input)"}`,color:m.role==="user"?"#C9A84C":"var(--text-dim)",fontSize:13,lineHeight:1.55,fontWeight:m.role==="user"?500:400,whiteSpace:"pre-wrap"}}>{m.content}</div>
+        </div>)}
+        {chatLoading&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"10px 14px",borderRadius:"16px 16px 16px 4px",background:"var(--bar-bg)",border:"1px solid var(--border-input)",color:"var(--text-dim)",fontSize:13}}><span style={{animation:"pulse 1s infinite"}}>Thinking...</span></div></div>}
+      </div>
+      <div style={{padding:"8px 16px",display:"flex",gap:8}}>
+        <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder="Ask Legacy AI anything..." style={{flex:1,background:"var(--bar-bg)",border:"1px solid var(--border-input)",borderRadius:14,padding:"12px 16px",color:"var(--text)",fontSize:14,fontFamily:"'Outfit',sans-serif"}}/>
+        <button onClick={sendChat} disabled={chatLoading||!chatInput.trim()} style={{padding:"0 18px",borderRadius:14,background:chatInput.trim()?"linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.1))":"var(--bg-hover)",border:`1px solid ${chatInput.trim()?"rgba(201,168,76,.25)":"var(--border)"}`,color:chatInput.trim()?"#C9A84C":"var(--text-dark)",fontSize:14,fontWeight:700,transition:"all .2s"}}>Send</button>
+      </div>
+    </div>}
+
+    {/* ═══ CHAT PAGE (legacy — redirect to messages) ═══ */}
     {page==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
       <div style={{padding:"12px 16px 8px"}}><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Your insurance sales assistant — powered by Claude</div></div>
       <div id="chat-scroll" style={{flex:1,overflowY:"auto",padding:"0 16px 12px",display:"flex",flexDirection:"column",gap:10}}>
@@ -423,7 +522,7 @@ function App(){
     </div>}
 
     {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"var(--bg-nav)",backdropFilter:"blur(20px)",borderTop:"1px solid var(--border-light)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"crm",l:"My CRM",ic:"📋"},{id:"leads",l:"Leads",ic:"⚡"},{id:"chat",l:"AI Chat",ic:"🤖"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>setPage(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 0",background:"transparent",color:page===t.id?"#C9A84C":"var(--text-darkest)",transition:"color .2s"}}><span style={{fontSize:18}}>{t.ic}</span><span style={{fontSize:8,fontWeight:700,letterSpacing:.4}}>{t.l}</span></button>)}</div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"var(--bg-nav)",backdropFilter:"blur(20px)",borderTop:"1px solid var(--border-light)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"crm",l:"My CRM",ic:"📋"},{id:"leads",l:"Leads",ic:"⚡"},{id:"messages",l:"Messages",ic:"💬"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>{setPage(t.id);if(t.id==="messages")setChatView("list");}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 0",background:"transparent",color:page===t.id?"#C9A84C":"var(--text-darkest)",transition:"color .2s"}}><span style={{fontSize:18}}>{t.ic}</span><span style={{fontSize:8,fontWeight:700,letterSpacing:.4}}>{t.l}</span></button>)}</div>
 
     {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
 
@@ -433,6 +532,9 @@ function App(){
     {showAddCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddCrm(false)}><AddCrmForm onAdd={handleAddCrm} onClose={()=>setShowAddCrm(false)}/></div>}
     {showImportCrm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowImportCrm(false)}><ImportCrmForm onImport={handleImportCrm} onClose={()=>setShowImportCrm(false)}/></div>}
     {showManageTeam&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowManageTeam(false)}><ManageTeamModal agents={agents} onAdd={handleAddAgent} onDelete={handleDeleteAgent} onClose={()=>setShowManageTeam(false)}/></div>}
+    {showNewChat&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowNewChat(false)}><NewPrivateChatModal agents={AGENTS} me={me||"admin"} onCreate={createPrivateChat} onClose={()=>setShowNewChat(false)}/></div>}
+    {showNewGroup&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowNewGroup(false)}><NewGroupChatModal agents={AGENTS} me={me||"admin"} onCreate={createGroupChat} onClose={()=>setShowNewGroup(false)}/></div>}
+    {showAddMember&&activeRoom&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowAddMember(false)}><AddMemberModal agents={AGENTS} currentMembers={(activeRoom.members||[]).map(m=>m.agent_id)} onAdd={addMemberToRoom} onClose={()=>setShowAddMember(false)}/></div>}
   </div>);
 }
 
@@ -581,6 +683,54 @@ function ManageTeamModal({agents,onAdd,onDelete,onClose}){
         <button onClick={()=>{setShowAdd(false);setErr("");setName("");setPin("");}} style={{flex:1,padding:12,borderRadius:12,background:"var(--bg-hover)",border:"1px solid var(--border-input)",color:"var(--text-dim)",fontSize:14,fontWeight:700}}>Cancel</button>
       </div>
     </div>}
+  </div>);
+}
+
+function NewPrivateChatModal({agents,me,onCreate,onClose}){
+  return(<div style={{width:"100%",background:"var(--bg-modal)",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid var(--border-input)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:6,color:"#C9A84C"}}>New Private Chat</div>
+    <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:14}}>Select a team member to start a private conversation</div>
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {agents.filter(a=>a.id!==me).map(ag=><button key={ag.id} onClick={()=>onCreate(ag.id)} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg-hover)",borderRadius:12,padding:"12px 14px",border:"1px solid var(--border)",textAlign:"left",width:"100%"}}>
+        <div style={{width:36,height:36,borderRadius:10,background:`${ag.color}12`,color:ag.color,border:`1.5px solid ${ag.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800}}>{ag.name[0]}</div>
+        <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{ag.name}</div>
+      </button>)}
+      {agents.filter(a=>a.id!==me).length===0&&<div style={{textAlign:"center",padding:20,color:"var(--text-ghost)",fontSize:13}}>No other team members available</div>}
+    </div>
+  </div>);
+}
+
+function NewGroupChatModal({agents,me,onCreate,onClose}){
+  const[name,setName]=useState("");const[selected,setSelected]=useState([]);
+  const toggle=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  return(<div style={{width:"100%",background:"var(--bg-modal)",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid var(--border-input)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:6,color:"#5B8BD4"}}>New Group Chat</div>
+    <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:14}}>Name your group and select members</div>
+    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Group name *" style={{...B.modalIn,marginBottom:12}}/>
+    <div style={{fontSize:12,fontWeight:700,color:"var(--text-dim)",marginBottom:8}}>Select Members</div>
+    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+      {agents.filter(a=>a.id!==me).map(ag=><button key={ag.id} onClick={()=>toggle(ag.id)} style={{display:"flex",alignItems:"center",gap:12,background:selected.includes(ag.id)?`${ag.color}08`:"var(--bg-hover)",borderRadius:12,padding:"10px 14px",border:`1px solid ${selected.includes(ag.id)?`${ag.color}30`:"var(--border)"}`,textAlign:"left",width:"100%"}}>
+        <div style={{width:32,height:32,borderRadius:8,background:`${ag.color}12`,color:ag.color,border:`1.5px solid ${ag.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800}}>{ag.name[0]}</div>
+        <div style={{flex:1,fontSize:14,fontWeight:700,color:"var(--text)"}}>{ag.name}</div>
+        <div style={{width:22,height:22,borderRadius:6,background:selected.includes(ag.id)?"#4EBF8B":"var(--bg-subtle)",border:`1.5px solid ${selected.includes(ag.id)?"#4EBF8B":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff"}}>{selected.includes(ag.id)?"✓":""}</div>
+      </button>)}
+    </div>
+    <button onClick={()=>{if(name.trim()&&selected.length>0)onCreate(name.trim(),selected);}} disabled={!name.trim()||selected.length===0} style={{width:"100%",padding:14,borderRadius:14,background:name.trim()&&selected.length>0?"linear-gradient(135deg,rgba(91,139,212,.15),rgba(91,139,212,.08))":"var(--bg-hover)",border:`1px solid ${name.trim()&&selected.length>0?"rgba(91,139,212,.2)":"var(--border)"}`,color:name.trim()&&selected.length>0?"#5B8BD4":"var(--text-dark)",fontSize:15,fontWeight:800}}>Create Group {selected.length>0?`(${selected.length} members)`:""}</button>
+  </div>);
+}
+
+function AddMemberModal({agents,currentMembers,onAdd,onClose}){
+  const available=agents.filter(a=>!currentMembers.includes(a.id));
+  return(<div style={{width:"100%",background:"var(--bg-modal)",borderRadius:"24px 24px 0 0",padding:"24px 20px max(env(safe-area-inset-bottom),20px)",border:"1px solid var(--border-input)",maxHeight:"85dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:18,fontWeight:800,marginBottom:6,color:"#4EBF8B"}}>Add Member</div>
+    <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:14}}>Select a team member to add to this group</div>
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {available.map(ag=><button key={ag.id} onClick={()=>onAdd(ag.id)} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg-hover)",borderRadius:12,padding:"12px 14px",border:"1px solid var(--border)",textAlign:"left",width:"100%"}}>
+        <div style={{width:36,height:36,borderRadius:10,background:`${ag.color}12`,color:ag.color,border:`1.5px solid ${ag.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800}}>{ag.name[0]}</div>
+        <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{ag.name}</div>
+      </button>)}
+      {available.length===0&&<div style={{textAlign:"center",padding:20,color:"var(--text-ghost)",fontSize:13}}>All team members are already in this group</div>}
+    </div>
   </div>);
 }
 

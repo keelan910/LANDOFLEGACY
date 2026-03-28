@@ -504,10 +504,130 @@ export default async (req) => {
         await sql`DELETE FROM sessions WHERE agent_id = ${id}`;
         return new Response(JSON.stringify({ ok: true }), { headers: H });
       }
+
+      // ═══════════════════════════════════
+      // ── CHAT ROOMS POST (reuse parsed body) ──
+      // ═══════════════════════════════════
+
+      if (a === "chat-rooms-create") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        if (!agentId) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
+        const type = body.type === "group" ? "group" : "private";
+        const name = String(body.name || "").slice(0, 100).replace(/<[^>]*>/g, '');
+        const memberIds = Array.isArray(body.members) ? body.members.filter(m => typeof m === "string").slice(0, 50) : [];
+
+        if (type === "private") {
+          if (memberIds.length !== 1) return new Response(JSON.stringify({ error: "Private chat requires exactly one other member" }), { status: 400, headers: H });
+          const otherId = memberIds[0];
+          const existing = await sql`
+            SELECT r.id FROM chat_rooms r
+            WHERE r.type = 'private'
+            AND EXISTS (SELECT 1 FROM chat_members WHERE room_id = r.id AND agent_id = ${agentId})
+            AND EXISTS (SELECT 1 FROM chat_members WHERE room_id = r.id AND agent_id = ${otherId})
+            AND (SELECT COUNT(*) FROM chat_members WHERE room_id = r.id) = 2
+            LIMIT 1`;
+          if (existing.length > 0) {
+            return new Response(JSON.stringify({ data: { id: existing[0].id, existing: true } }), { headers: H });
+          }
+        }
+
+        if (type === "group" && !name.trim()) return new Response(JSON.stringify({ error: "Group name required" }), { status: 400, headers: H });
+
+        const roomRows = await sql`INSERT INTO chat_rooms (name, type, created_by) VALUES (${name}, ${type}, ${agentId}) RETURNING *`;
+        const room = roomRows[0];
+        await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${room.id}, ${agentId}) ON CONFLICT DO NOTHING`;
+        for (const mid of memberIds) {
+          const validAgent = await sql`SELECT id FROM agents WHERE id = ${mid} AND active = TRUE`;
+          if (validAgent.length > 0 || mid === "admin") {
+            await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${room.id}, ${mid}) ON CONFLICT DO NOTHING`;
+          }
+        }
+        return new Response(JSON.stringify({ data: room }), { headers: H });
+      }
+
+      if (a === "chat-rooms-send") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        if (!agentId) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
+        const roomId = parseInt(body.room_id);
+        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
+        const content = String(body.content || "").slice(0, 2000).replace(/<[^>]*>/g, '');
+        if (!content.trim()) return new Response(JSON.stringify({ error: "Message cannot be empty" }), { status: 400, headers: H });
+
+        const membership = await sql`SELECT 1 FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
+        if (!membership.length) return new Response(JSON.stringify({ error: "Not a member of this room" }), { status: 403, headers: H });
+
+        const agentRows = await sql`SELECT name FROM agents WHERE id = ${agentId}`;
+        const senderName = agentRows.length > 0 ? agentRows[0].name : (agentId === "admin" ? "Admin" : agentId);
+
+        const rows = await sql`INSERT INTO chat_messages (room_id, sender_id, sender_name, content) VALUES (${roomId}, ${agentId}, ${senderName}, ${content}) RETURNING *`;
+        return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
+      }
+
+      if (a === "chat-rooms-add-member") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        const roomId = parseInt(body.room_id);
+        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
+
+        const roomCheck = await sql`SELECT r.type, r.created_by FROM chat_rooms r INNER JOIN chat_members m ON r.id = m.room_id WHERE r.id = ${roomId} AND m.agent_id = ${agentId}`;
+        if (!roomCheck.length) return new Response(JSON.stringify({ error: "Not a member" }), { status: 403, headers: H });
+        if (roomCheck[0].type !== "group") return new Response(JSON.stringify({ error: "Cannot add members to a private chat" }), { status: 400, headers: H });
+
+        const newMemberId = String(body.new_member_id || "");
+        if (!newMemberId) return new Response(JSON.stringify({ error: "new_member_id required" }), { status: 400, headers: H });
+        const validAgent = await sql`SELECT id FROM agents WHERE id = ${newMemberId} AND active = TRUE`;
+        if (!validAgent.length && newMemberId !== "admin") return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404, headers: H });
+
+        await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${roomId}, ${newMemberId}) ON CONFLICT DO NOTHING`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
+
+      if (a === "chat-rooms-leave") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        const roomId = parseInt(body.room_id);
+        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
+
+        const roomCheck = await sql`SELECT type FROM chat_rooms WHERE id = ${roomId}`;
+        if (!roomCheck.length) return new Response(JSON.stringify({ error: "Room not found" }), { status: 404, headers: H });
+        if (roomCheck[0].type !== "group") return new Response(JSON.stringify({ error: "Cannot leave a private chat" }), { status: 400, headers: H });
+
+        await sql`DELETE FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
+        const remaining = await sql`SELECT COUNT(*)::int as cnt FROM chat_members WHERE room_id = ${roomId}`;
+        if (remaining[0].cnt === 0) {
+          await sql`DELETE FROM chat_messages WHERE room_id = ${roomId}`;
+          await sql`DELETE FROM chat_rooms WHERE id = ${roomId}`;
+        }
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
+
+      if (a === "chat-rooms-clear") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        const roomId = parseInt(body.room_id);
+        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
+
+        const membership = await sql`SELECT 1 FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
+        if (!membership.length && !isAdmin) return new Response(JSON.stringify({ error: "Not a member" }), { status: 403, headers: H });
+
+        await sql`DELETE FROM chat_messages WHERE room_id = ${roomId}`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
+
+      if (a === "chat-rooms-delete") {
+        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
+        const roomId = parseInt(body.room_id);
+        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
+
+        const membership = await sql`SELECT 1 FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
+        if (!membership.length && !isAdmin) return new Response(JSON.stringify({ error: "Not a member" }), { status: 403, headers: H });
+
+        await sql`DELETE FROM chat_messages WHERE room_id = ${roomId}`;
+        await sql`DELETE FROM chat_members WHERE room_id = ${roomId}`;
+        await sql`DELETE FROM chat_rooms WHERE id = ${roomId}`;
+        return new Response(JSON.stringify({ ok: true }), { headers: H });
+      }
     }
 
     // ═══════════════════════════════════
-    // ── CHAT ROOMS (all require auth) ──
+    // ── CHAT ROOMS GET (require auth) ──
     // ═══════════════════════════════════
 
     // List rooms the current agent belongs to
@@ -558,113 +678,6 @@ export default async (req) => {
       return new Response(JSON.stringify({ data: rows }), { headers: H });
     }
 
-    // POST actions for chat rooms
-    if (req.method === "POST") {
-      const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
-      if (a && a.startsWith("chat-rooms-") && contentLength > 102400) return new Response(JSON.stringify({ error: "Request too large" }), { status: 413, headers: H });
-
-      if (a === "chat-rooms-create") {
-        let body; try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
-        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
-        if (!agentId) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
-        const type = body.type === "group" ? "group" : "private";
-        const name = String(body.name || "").slice(0, 100).replace(/<[^>]*>/g, '');
-        const memberIds = Array.isArray(body.members) ? body.members.filter(m => typeof m === "string").slice(0, 50) : [];
-
-        if (type === "private") {
-          if (memberIds.length !== 1) return new Response(JSON.stringify({ error: "Private chat requires exactly one other member" }), { status: 400, headers: H });
-          // Check if private room already exists between these two
-          const otherId = memberIds[0];
-          const existing = await sql`
-            SELECT r.id FROM chat_rooms r
-            WHERE r.type = 'private'
-            AND EXISTS (SELECT 1 FROM chat_members WHERE room_id = r.id AND agent_id = ${agentId})
-            AND EXISTS (SELECT 1 FROM chat_members WHERE room_id = r.id AND agent_id = ${otherId})
-            AND (SELECT COUNT(*) FROM chat_members WHERE room_id = r.id) = 2
-            LIMIT 1`;
-          if (existing.length > 0) {
-            return new Response(JSON.stringify({ data: { id: existing[0].id, existing: true } }), { headers: H });
-          }
-        }
-
-        if (type === "group" && !name.trim()) return new Response(JSON.stringify({ error: "Group name required" }), { status: 400, headers: H });
-
-        const roomRows = await sql`INSERT INTO chat_rooms (name, type, created_by) VALUES (${name}, ${type}, ${agentId}) RETURNING *`;
-        const room = roomRows[0];
-        // Add creator as member
-        await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${room.id}, ${agentId}) ON CONFLICT DO NOTHING`;
-        // Add other members
-        for (const mid of memberIds) {
-          const validAgent = await sql`SELECT id FROM agents WHERE id = ${mid} AND active = TRUE`;
-          if (validAgent.length > 0 || mid === "admin") {
-            await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${room.id}, ${mid}) ON CONFLICT DO NOTHING`;
-          }
-        }
-        return new Response(JSON.stringify({ data: room }), { headers: H });
-      }
-
-      if (a === "chat-rooms-send") {
-        let body; try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
-        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
-        if (!agentId) return new Response(JSON.stringify({ error: "agent required" }), { status: 400, headers: H });
-        const roomId = parseInt(body.room_id);
-        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
-        const content = String(body.content || "").slice(0, 2000).replace(/<[^>]*>/g, '');
-        if (!content.trim()) return new Response(JSON.stringify({ error: "Message cannot be empty" }), { status: 400, headers: H });
-
-        // Verify membership
-        const membership = await sql`SELECT 1 FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
-        if (!membership.length) return new Response(JSON.stringify({ error: "Not a member of this room" }), { status: 403, headers: H });
-
-        // Get sender name
-        const agentRows = await sql`SELECT name FROM agents WHERE id = ${agentId}`;
-        const senderName = agentRows.length > 0 ? agentRows[0].name : (agentId === "admin" ? "Admin" : agentId);
-
-        const rows = await sql`INSERT INTO chat_messages (room_id, sender_id, sender_name, content) VALUES (${roomId}, ${agentId}, ${senderName}, ${content}) RETURNING *`;
-        return new Response(JSON.stringify({ data: rows[0] }), { headers: H });
-      }
-
-      if (a === "chat-rooms-add-member") {
-        let body; try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
-        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
-        const roomId = parseInt(body.room_id);
-        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
-
-        // Verify room is a group and requester is a member
-        const roomCheck = await sql`SELECT r.type, r.created_by FROM chat_rooms r INNER JOIN chat_members m ON r.id = m.room_id WHERE r.id = ${roomId} AND m.agent_id = ${agentId}`;
-        if (!roomCheck.length) return new Response(JSON.stringify({ error: "Not a member" }), { status: 403, headers: H });
-        if (roomCheck[0].type !== "group") return new Response(JSON.stringify({ error: "Cannot add members to a private chat" }), { status: 400, headers: H });
-
-        const newMemberId = String(body.new_member_id || "");
-        if (!newMemberId) return new Response(JSON.stringify({ error: "new_member_id required" }), { status: 400, headers: H });
-        const validAgent = await sql`SELECT id FROM agents WHERE id = ${newMemberId} AND active = TRUE`;
-        if (!validAgent.length && newMemberId !== "admin") return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404, headers: H });
-
-        await sql`INSERT INTO chat_members (room_id, agent_id) VALUES (${roomId}, ${newMemberId}) ON CONFLICT DO NOTHING`;
-        return new Response(JSON.stringify({ ok: true }), { headers: H });
-      }
-
-      if (a === "chat-rooms-leave") {
-        let body; try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
-        const agentId = isAdmin ? (body.agent_id || "admin") : sessionAgent;
-        const roomId = parseInt(body.room_id);
-        if (!roomId) return new Response(JSON.stringify({ error: "room_id required" }), { status: 400, headers: H });
-
-        // Only allow leaving group chats
-        const roomCheck = await sql`SELECT type FROM chat_rooms WHERE id = ${roomId}`;
-        if (!roomCheck.length) return new Response(JSON.stringify({ error: "Room not found" }), { status: 404, headers: H });
-        if (roomCheck[0].type !== "group") return new Response(JSON.stringify({ error: "Cannot leave a private chat" }), { status: 400, headers: H });
-
-        await sql`DELETE FROM chat_members WHERE room_id = ${roomId} AND agent_id = ${agentId}`;
-        // If no members remain, delete the room
-        const remaining = await sql`SELECT COUNT(*)::int as cnt FROM chat_members WHERE room_id = ${roomId}`;
-        if (remaining[0].cnt === 0) {
-          await sql`DELETE FROM chat_messages WHERE room_id = ${roomId}`;
-          await sql`DELETE FROM chat_rooms WHERE id = ${roomId}`;
-        }
-        return new Response(JSON.stringify({ ok: true }), { headers: H });
-      }
-    }
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: H });
   } catch (e) { console.error("API Error:", e); return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: H }); }

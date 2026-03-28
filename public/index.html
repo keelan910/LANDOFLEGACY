@@ -133,10 +133,12 @@ function App(){
   const loadChatRooms=async()=>{const d=await get(`a=chat-rooms-list${me?"&agent="+me:""}`);if(d)setChatRooms(d);};
   const openRoom=async(room)=>{setActiveRoom(room);setChatView("room");const d=await get(`a=chat-rooms-messages&room=${room.id}${me?"&agent="+me:""}`);setRoomMsgs(d||[]);};
   const sendRoomMsg=async()=>{if(!roomInput.trim()||!activeRoom)return;const msg=roomInput.trim();setRoomInput("");const r=await post("chat-rooms-send",{room_id:activeRoom.id,content:msg,agent_id:me||"admin"});if(r.data){setRoomMsgs(m=>[...m,r.data]);}};
-  const createPrivateChat=async(otherId)=>{const r=await post("chat-rooms-create",{type:"private",members:[otherId],agent_id:me||"admin"});if(r.data){setShowNewChat(false);loadChatRooms();const room=r.data;openRoom({id:room.id||room.existing,type:"private",members:[]});}};
-  const createGroupChat=async(name,memberIds)=>{const r=await post("chat-rooms-create",{type:"group",name,members:memberIds,agent_id:me||"admin"});if(r.data){setShowNewGroup(false);loadChatRooms();openRoom({id:r.data.id,name:r.data.name,type:"group",members:[]});}};
+  const createPrivateChat=async(otherId)=>{const r=await post("chat-rooms-create",{type:"private",members:[otherId],agent_id:me||"admin"});if(r.data){setShowNewChat(false);await loadChatRooms();const roomId=r.data.id||r.data.existing;const otherAgent=AGENTS.find(a=>a.id===otherId);openRoom({id:roomId,type:"private",members:[{agent_id:me||"admin",name:myAgent?.name||"Admin"},{agent_id:otherId,name:otherAgent?.name||otherId,color:otherAgent?.color||"#5B8BD4"}]});}};
+  const createGroupChat=async(name,memberIds)=>{const r=await post("chat-rooms-create",{type:"group",name,members:memberIds,agent_id:me||"admin"});if(r.data){setShowNewGroup(false);await loadChatRooms();const members=memberIds.map(mid=>{const ag=AGENTS.find(a=>a.id===mid);return{agent_id:mid,name:ag?.name||mid,color:ag?.color||"#5B8BD4"};});members.push({agent_id:me||"admin",name:myAgent?.name||"Admin"});openRoom({id:r.data.id,name:r.data.name,type:"group",members});}};
   const addMemberToRoom=async(newMemberId)=>{if(!activeRoom)return;const r=await post("chat-rooms-add-member",{room_id:activeRoom.id,new_member_id:newMemberId,agent_id:me||"admin"});if(r.ok){showToast("Member added!");setShowAddMember(false);loadChatRooms();const d=await get(`a=chat-rooms-messages&room=${activeRoom.id}${me?"&agent="+me:""}`);setRoomMsgs(d||[]);}else{showToast(r.error||"Failed to add");}};
   const leaveRoom=async(roomId)=>{const r=await post("chat-rooms-leave",{room_id:roomId,agent_id:me||"admin"});if(r.ok){showToast("Left group");setActiveRoom(null);setChatView("list");loadChatRooms();}};
+  const clearRoom=async(roomId)=>{const r=await post("chat-rooms-clear",{room_id:roomId,agent_id:me||"admin"});if(r.ok){showToast("Chat cleared");setRoomMsgs([]);}};
+  const deleteRoom=async(roomId)=>{const r=await post("chat-rooms-delete",{room_id:roomId,agent_id:me||"admin"});if(r.ok){showToast("Chat deleted");setActiveRoom(null);setChatView("list");loadChatRooms();}};
 
   // Refresh chat rooms when on messages page
   useEffect(()=>{if(page==="messages"&&role)loadChatRooms();},[page,role]);
@@ -471,6 +473,10 @@ function App(){
           <button onClick={()=>setShowAddMember(true)} style={{background:"rgba(78,191,139,.06)",border:"1px solid rgba(78,191,139,.12)",borderRadius:8,padding:"5px 10px",color:"#4EBF8B",fontSize:10,fontWeight:700}}>+ Add</button>
           <button onClick={()=>{if(confirm("Leave this group?"))leaveRoom(activeRoom.id);}} style={{background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",borderRadius:8,padding:"5px 10px",color:"#EF4444",fontSize:10,fontWeight:700}}>Leave</button>
         </div>}
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>{if(confirm("Clear all messages? This cannot be undone."))clearRoom(activeRoom.id);}} style={{background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.12)",borderRadius:8,padding:"5px 10px",color:"#C9A84C",fontSize:10,fontWeight:700}}>Clear</button>
+          <button onClick={()=>{if(confirm("Delete this chat and all messages? This cannot be undone."))deleteRoom(activeRoom.id);}} style={{background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.12)",borderRadius:8,padding:"5px 10px",color:"#EF4444",fontSize:10,fontWeight:700}}>Delete</button>
+        </div>
       </div>
       <div id="room-scroll" style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
         {roomMsgs.map((m,i)=>{const isMe=m.sender_id===(me||"admin");const senderAgent=AGENTS.find(a=>a.id===m.sender_id);const sColor=senderAgent?.color||(m.sender_id==="admin"?"#C9A84C":"#5B8BD4");return(

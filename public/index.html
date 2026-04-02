@@ -512,6 +512,12 @@ function App(){
       </div>
     </div>}
 
+    {/* ═══ FEX QUOTER PAGE ═══ */}
+    {page==="fex"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
+      <div style={{padding:"12px 16px 0",display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:18}}>📝</span><span style={{fontSize:16,fontWeight:800,letterSpacing:1}}>FEX Quoter</span></div>
+      <div style={{flex:1,padding:"12px 16px"}}><iframe src="https://insurancetoolkits.com/fex/lite-form/?token=NbTNghdYa8nY9XgysFuuLjAAAtM5EPEylARJEzH1" style={{border:"none",height:"800px",width:"100%",borderRadius:16,background:"white"}} title="FEX Quoter"/></div>
+    </div>}
+
     {/* ═══ CHAT PAGE (legacy — redirect to messages) ═══ */}
     {page==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",paddingBottom:80}}>
       <div style={{padding:"12px 16px 8px"}}><div style={{fontSize:16,fontWeight:800,color:"#C9A84C"}}>Legacy AI</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Your insurance sales assistant — powered by Claude</div></div>
@@ -528,7 +534,7 @@ function App(){
     </div>}
 
     {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"var(--bg-nav)",backdropFilter:"blur(20px)",borderTop:"1px solid var(--border-light)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"crm",l:"My CRM",ic:"📋"},{id:"leads",l:"Leads",ic:"⚡"},{id:"messages",l:"Messages",ic:"💬"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>{setPage(t.id);if(t.id==="messages")setChatView("list");}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 0",background:"transparent",color:page===t.id?"#C9A84C":"var(--text-darkest)",transition:"color .2s"}}><span style={{fontSize:18}}>{t.ic}</span><span style={{fontSize:8,fontWeight:700,letterSpacing:.4}}>{t.l}</span></button>)}</div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",background:"var(--bg-nav)",backdropFilter:"blur(20px)",borderTop:"1px solid var(--border-light)",paddingBottom:"max(env(safe-area-inset-bottom),8px)",paddingTop:8,zIndex:50}}>{[{id:"kpi",l:"KPIs",ic:"📊"},{id:"crm",l:"My CRM",ic:"📋"},{id:"leads",l:"Leads",ic:"⚡"},{id:"messages",l:"Messages",ic:"💬"},{id:"recruiting",l:"Recruits",ic:"👥"},{id:"fex",l:"Quoter",ic:"📝"},{id:"tracker",l:"Tracker",ic:"◈"}].map(t=><button key={t.id} onClick={()=>{setPage(t.id);if(t.id==="messages")setChatView("list");}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 0",background:"transparent",color:page===t.id?"#C9A84C":"var(--text-darkest)",transition:"color .2s"}}><span style={{fontSize:18}}>{t.ic}</span><span style={{fontSize:8,fontWeight:700,letterSpacing:.4}}>{t.l}</span></button>)}</div>
 
     {toast&&<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:"rgba(78,191,139,.06)",color:"#4EBF8B",padding:"10px 24px",borderRadius:14,fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,border:"1px solid rgba(78,191,139,.1)",animation:"toastIn .3s ease",zIndex:100,backdropFilter:"blur(16px)",whiteSpace:"nowrap"}}>✓ {toast}</div>}
 

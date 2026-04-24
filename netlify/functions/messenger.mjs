@@ -1,4 +1,4 @@
-import { neon } from "@netlify/neon";
+import { neon } from "@neondatabase/serverless";
 import Anthropic from "@anthropic-ai/sdk";
 
 // Tokens must be set as environment variables in Netlify dashboard
@@ -66,7 +66,7 @@ async function sendQuickReplies(recipientId, text, replies) {
 
 // AI conversation logic - qualifies leads and books appointments via Claude
 async function handleMessage(senderId, messageText, senderName) {
-  const sql = neon();
+  const sql = neon(process.env.NETLIFY_DATABASE_URL);
 
   // Check if we already have this lead in progress
   const existing = await sql`SELECT * FROM leads WHERE profile_url = ${senderId} AND status NOT IN ('closed','discarded') ORDER BY created_at DESC LIMIT 1`;

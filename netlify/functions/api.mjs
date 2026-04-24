@@ -1,4 +1,4 @@
-import { neon } from "@netlify/neon";
+import { neon } from "@neondatabase/serverless";
 
 // ── CRYPTO HELPERS ──
 async function hashPin(pin, salt) {
@@ -31,10 +31,13 @@ async function validateSession(sql, req) {
 }
 
 // ── RATE LIMITING ──
+// Only FAILED attempts are counted — a whole team on a shared IP can log in normally.
+// 30 failed attempts per 15 minutes is still tight brute-force protection.
+const LOGIN_FAIL_LIMIT = 30;
 async function checkRateLimit(sql, ip) {
   await sql`DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '15 minutes'`;
   const rows = await sql`SELECT COUNT(*)::int as cnt FROM login_attempts WHERE ip_address = ${ip} AND attempted_at > NOW() - INTERVAL '15 minutes'`;
-  return (rows[0]?.cnt || 0) < 10;
+  return (rows[0]?.cnt || 0) < LOGIN_FAIL_LIMIT;
 }
 
 async function recordLoginAttempt(sql, ip) {
@@ -42,7 +45,7 @@ async function recordLoginAttempt(sql, ip) {
 }
 
 export default async (req) => {
-  const sql = neon();
+  const sql = neon(process.env.NETLIFY_DATABASE_URL);
   const origin = req.headers.get("origin") || "";
   const siteHost = new URL(req.url).origin;
   const allowedOrigin = origin === siteHost ? origin : siteHost;
@@ -129,17 +132,18 @@ export default async (req) => {
 
       const ip = req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for") || "unknown";
       const allowed = await checkRateLimit(sql, ip);
-      if (!allowed) return new Response(JSON.stringify({ error: "Too many login attempts. Try again in 15 minutes." }), { status: 429, headers: H });
+      if (!allowed) return new Response(JSON.stringify({ error: "Too many failed login attempts from this network. Try again in 15 minutes." }), { status: 429, headers: H });
 
       let body;
-      try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: H }); }
+      try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Invalid request — please try again." }), { status: 400, headers: H }); }
       const pin = String(body?.pin || "");
-      if (!pin || !/^\d{4}$/.test(pin)) return new Response(JSON.stringify({ error: "Invalid PIN" }), { status: 400, headers: H });
+      if (!pin || !/^\d{4}$/.test(pin)) {
+        await recordLoginAttempt(sql, ip);
+        return new Response(JSON.stringify({ error: "PIN must be 4 digits." }), { status: 400, headers: H });
+      }
 
-      await recordLoginAttempt(sql, ip);
-
-      // Check admin PIN (must be set as env var — no hardcoded fallback)
-     const ADMIN_PIN = process.env.ADMIN_PIN || "2424";
+      // Check admin PIN first
+      const ADMIN_PIN = process.env.ADMIN_PIN || "2424";
       if (ADMIN_PIN && pin === ADMIN_PIN) {
         const token = generateToken();
         await sql`INSERT INTO sessions (token, agent_id, role, expires_at) VALUES (${token}, NULL, 'admin', NOW() + INTERVAL '12 hours')`;
@@ -154,7 +158,11 @@ export default async (req) => {
         if (testHash === ag.pin_hash) { matchedAgent = ag; break; }
       }
 
-      if (!matchedAgent) return new Response(JSON.stringify({ error: "Invalid PIN" }), { status: 401, headers: H });
+      if (!matchedAgent) {
+        // Only record FAILED attempts so a whole team on a shared IP doesn't lock itself out.
+        await recordLoginAttempt(sql, ip);
+        return new Response(JSON.stringify({ error: "Invalid PIN — no agent matches that code." }), { status: 401, headers: H });
+      }
 
       const token = generateToken();
       await sql`INSERT INTO sessions (token, agent_id, role, expires_at) VALUES (${token}, ${matchedAgent.id}, 'agent', NOW() + INTERVAL '12 hours')`;

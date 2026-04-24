@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { neon } from "@netlify/neon";
+import { neon } from "@neondatabase/serverless";
 
 const anthropic = new Anthropic();
 
@@ -37,7 +37,7 @@ export default async (req) => {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: H });
   }
   try {
-    const sql = neon();
+    const sql = neon(process.env.NETLIFY_DATABASE_URL);
     const sessions = await sql`SELECT agent_id FROM sessions WHERE token = ${token} AND expires_at > NOW()`;
     if (sessions.length === 0) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: H });

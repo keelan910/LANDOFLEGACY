@@ -688,7 +688,19 @@ export default async (req) => {
 
 
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: H });
-  } catch (e) { console.error("API Error:", e); return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: H }); }
+  } catch (e) {
+    console.error("API Error:", e);
+    const msg = String(e?.message || "");
+    // Surface a clearer error when the Neon database rejects our credentials
+    // so operators don't have to dig through function logs to learn the cause.
+    if (/authentication failed|password authentication/i.test(msg)) {
+      return new Response(JSON.stringify({ error: "Database unavailable — the Netlify DB (Neon) credentials are invalid. Reset/rotate the database in the Netlify dashboard under Extensions → Netlify DB, then redeploy." }), { status: 503, headers: H });
+    }
+    if (/ENOTFOUND|ECONNREFUSED|connect\s+ECONN|getaddrinfo/i.test(msg)) {
+      return new Response(JSON.stringify({ error: "Database unreachable — could not connect to Netlify DB. Check the Netlify DB extension status." }), { status: 503, headers: H });
+    }
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: H });
+  }
 };
 
 export const config = { path: "/.netlify/functions/api" };
